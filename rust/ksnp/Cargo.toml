@@ -1,0 +1,13 @@
+[package]
+name = "ksnp"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "Rust wrapper for the KSNP library."
+
+[lints]
+workspace = true
+
+[dependencies]
+ksnp-sys = { workspace = true }
+uuid = { workspace = true }

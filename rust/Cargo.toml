@@ -1,0 +1,56 @@
+[workspace]
+members = ["ksnp-sys", "ksnp"]
+resolver = "2"
+
+[workspace.package]
+# Note: this link is currently not stable and may contain outdated artifacts
+documentation = "https://docs.evolutionq.de/"
+
+[workspace.dependencies]
+anyhow = { version = "1.0", default-features = false, features = ["std"] }
+bindgen = { version = "0.72", default-features = false, features = ["runtime"] }
+clap = { version = "4.5", default-features = false }
+cmake = { version = "0.1", default-features = false }
+link-cplusplus = { version = "1", default-features = false }
+pkg-config = { version = "0.3", default-features = false }
+regex = { version = "1.12", default-features = false }
+uuid = { version = "1.17", default-features = false }
+
+ksnp-sys = { path = "./ksnp-sys", default-features = false }
+
+[workspace.lints.rust]
+closure_returning_async_block = "warn"
+macro_use_extern_crate = "warn"
+missing_docs = "warn"
+redundant_imports = "warn"
+unused_extern_crates = "warn"
+unused_lifetimes = "warn"
+unused_qualifications = "warn"
+
+[workspace.lints.clippy]
+std_instead_of_core = "warn"
+undocumented_unsafe_blocks = "warn"
+allow_attributes = "warn"
+
+pedantic = { level = "warn", priority = -1 }
+cast_possible_truncation = "allow"
+cast_possible_wrap = "allow"
+cast_precision_loss = "allow"
+cast_sign_loss = "allow"
+checked_conversions = "allow"
+doc_comment_double_space_linebreaks = "allow"
+doc_markdown = "allow"
+large_digit_groups = "allow"
+large_futures = "allow"
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
+must_use_candidate = "allow"
+needless_continue = "allow"
+needless_pass_by_value = "allow"
+no_effect_underscore_binding = "allow"
+similar_names = "allow"
+struct_field_names = "allow"
+too_many_lines = "allow"
+trivially_copy_pass_by_ref = "allow"
+unreadable_literal = "allow"
+wildcard_imports = "allow"
