@@ -869,6 +869,9 @@ public:
     {
         free_last_message();
         if (*read == 0) {
+            if (this->eof) {
+                return ksnp_error::KSNP_E_INVALID_OPERATION;
+            }
             this->eof = true;
             return ksnp_error::KSNP_E_NO_ERROR;
         }

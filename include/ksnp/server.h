@@ -326,15 +326,14 @@ bool ksnp_server_want_read(struct ksnp_server const *server) NOEXCEPT;
  * as soon as possible, or when @ref ksnp_server_want_read() returns false.
  *
  * To indicate the receiving channel from the client has been closed, i.e., EOF
- * was reached, the @p len parameter can be set to the value 0.
+ * was reached, use @ref ksnp_server_close_connection().
  *
  * @param server The server to provide data to.
- * @param data [optional] Pointer to a buffer containing more data. This can be
- * NULL @e only when @p len is 0.
+ * @param data Pointer to a buffer containing more data.
  * @param len [in,out] Pointer to the length value, which must match the length
- * of the input buffer @p data, or be set to 0. When 0, the @p data parameter
- * may be NULL. If this function returns successfully, the number of bytes
- * actually read are written to the length value, which may be 0.
+ * of the input buffer @p data. If this function returns successfully, the
+ * number of bytes actually read are written to the length value, which may be
+ * 0.
  * @return @ref KSNP_E_NO_ERROR on success.
  * @return Any of the values from the @ref ksnp_error enum on failure.
  */
@@ -541,21 +540,26 @@ NODISCARD ksnp_error ksnp_server_keep_alive_fail(struct ksnp_server *server,
                                                  char const         *message) NOEXCEPT;
 
 /**
- * @brief Enter connection shutdown.
+ * @brief Close the connection with the client in a particular direction.
  *
- * Prepare to close the connection to the client. The server will accept
- * incoming data until the client closes the connection, but will not generate
- * any data to write. After calling this function, the outgoing connection must
- * be closed as soon as @ref ksnp_server_want_write() returns false.
+ * The read direction must be closed as soon as the server indicates it has
+ * closed the connection. If the read direction is closed, no further message
+ * data will be accepted. The write direction must be closed as soon as
+ * ksnp_server_next_event() returns no event and ksnp_server_want_write()
+ * returns false.
  *
- * Any ongoing event is cancelled, and the server should read events until the
- * client has closed the connection.
+ * If the write direction is closed, any ongoing event is cancelled. The server
+ * will accept incoming data until the read direction is closed, but will not
+ * generate any data to write. After calling this function, the outgoing
+ * connection must be closed as soon as @ref ksnp_server_want_write() returns
+ * false.
  *
- * @param server The server for which to enter shutdown.
+ * @param server The server for which to close the connection.
+ * @param dir The direction to close.
  * @return @ref KSNP_E_NO_ERROR on success.
  * @return Any of the values from the @ref ksnp_error enum on failure.
  */
-NODISCARD ksnp_error ksnp_server_close_connection(struct ksnp_server *server) NOEXCEPT;
+NODISCARD ksnp_error ksnp_server_close_connection(struct ksnp_server *server, ksnp_close_direction dir) NOEXCEPT;
 
 // NOLINTEND(modernize-use-trailing-return-type)
 

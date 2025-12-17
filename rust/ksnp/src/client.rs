@@ -6,7 +6,10 @@ use crate::{
     message::MessageContext,
     processor::Processor,
     sys::{self, ksnp_error},
-    types::{StreamAcceptedParams, StreamOpenParams, StreamQosParams, map_err, string_ref},
+    types::{
+        CloseDirection, StreamAcceptedParams, StreamOpenParams, StreamQosParams, map_err,
+        string_ref,
+    },
 };
 
 /// Wrapper for a [`sys::ksnp_client`].
@@ -74,6 +77,12 @@ impl ClientConnection {
         // SAFETY: client is a valid writeable pointer. The stream id provides a
         // valid array.
         map_err(unsafe { sys::ksnp_client_keep_alive(self.client, stream_id.as_bytes()) })?;
+        Ok(())
+    }
+
+    pub fn close_connection(&mut self, dir: CloseDirection) -> Result<(), ksnp_error> {
+        // SAFETY: client is a valid writeable pointer.
+        map_err(unsafe { sys::ksnp_client_close_connection(self.client, dir.into()) })?;
         Ok(())
     }
 }

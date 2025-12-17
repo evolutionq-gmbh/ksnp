@@ -43,7 +43,6 @@ auto ksnp_server::want_read() const noexcept -> bool
 
 auto ksnp_server::read_data(std::span<uint8_t const> data) -> size_t
 {
-
     size_t len = data.size();
     if (auto res = ::ksnp_message_context_read_data(this->connection, data.data(), &len);
         res != ksnp_error::KSNP_E_NO_ERROR) {
@@ -374,13 +373,29 @@ void ksnp_server::keep_alive_fail(ksnp_status_code reason, char const *message)
     this->current_action = std::nullopt;
 }
 
-void ksnp_server::close_connection()
+void ksnp_server::close_connection(ksnp_close_direction dir)
 {
-    if (this->in_shutdown) {
-        throw exception(ksnp_error::KSNP_E_INVALID_OPERATION);
+    bool close_read  = dir == ksnp_close_direction::KSNP_CLOSE_READ || dir == ksnp_close_direction::KSNP_CLOSE_BOTH;
+    bool close_write = dir == ksnp_close_direction::KSNP_CLOSE_WRITE || dir == ksnp_close_direction::KSNP_CLOSE_BOTH;
+    if (!close_read && !close_write) {
+        throw exception(ksnp_error::KSNP_E_INVALID_ARGUMENT);
     }
-    this->in_shutdown    = true;
-    this->current_action = std::nullopt;
+
+    if (close_read) {
+        size_t len = 0;
+        if (auto res = ::ksnp_message_context_read_data(this->connection, nullptr, &len);
+            res != ksnp_error::KSNP_E_NO_ERROR) {
+            throw ksnp::exception(res);
+        }
+    }
+
+    if (close_write) {
+        if (this->in_shutdown) {
+            throw exception(ksnp_error::KSNP_E_INVALID_OPERATION);
+        }
+        this->in_shutdown    = true;
+        this->current_action = std::nullopt;
+    }
 }
 
 void ksnp_server::push_message(message_t const msg)
@@ -614,9 +629,9 @@ auto ksnp_server_keep_alive_fail(struct ksnp_server *server, ksnp_status_code re
     CATCH_ALL
 }
 
-auto ksnp_server_close_connection(struct ksnp_server *server) noexcept -> ksnp_error
+auto ksnp_server_close_connection(struct ksnp_server *server, ksnp_close_direction dir) noexcept -> ksnp_error
 try {
-    server->close_connection();
+    server->close_connection(dir);
     return ksnp_error::KSNP_E_NO_ERROR;
 }
 CATCH_ALL

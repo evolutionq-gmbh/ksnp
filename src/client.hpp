@@ -55,7 +55,7 @@ public:
 
     void keep_alive(uuid_t const &stream_id);
 
-    void close_connection();
+    void close_connection(ksnp_close_direction dir);
 
 private:
     /**

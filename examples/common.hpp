@@ -196,21 +196,24 @@ public:
  * @tparam T Type purported to implement IoProcessor.
  */
 template<typename T>
-concept IoProcessor = requires(T impl, std::span<unsigned char const> cdata, std::span<unsigned char> data) {
-    typename T::result_type;
+concept IoProcessor =
+    requires(T impl, std::span<unsigned char const> cdata, std::span<unsigned char> data, ksnp_close_direction dir) {
+        typename T::result_type;
 
-    { std::constructible_from<bool, typename T::result_type const &> };
+        { std::constructible_from<bool, typename T::result_type const &> };
 
-    { impl.want_read() } -> std::same_as<bool>;
+        { impl.want_read() } -> std::same_as<bool>;
 
-    { impl.want_write() } -> std::same_as<bool>;
+        { impl.want_write() } -> std::same_as<bool>;
 
-    { impl.read_data(cdata) } -> std::convertible_to<size_t>;
+        { impl.read_data(cdata) } -> std::convertible_to<size_t>;
 
-    { impl.write_data(data) } -> std::convertible_to<size_t>;
+        { impl.write_data(data) } -> std::convertible_to<size_t>;
 
-    { impl.next_event() } -> std::same_as<typename T::result_type>;
-};
+        { impl.next_event() } -> std::same_as<typename T::result_type>;
+
+        { impl.close_connection(dir) } -> std::same_as<void>;
+    };
 
 /**
  * @brief Wrapper for message_context.
@@ -333,6 +336,11 @@ public:
     {
         check_error(::ksnp_client_add_capacity(**this, additional_capacity));
     }
+
+    void close_connection(ksnp_close_direction dir)
+    {
+        check_error(::ksnp_client_close_connection(**this, dir));
+    }
 };
 
 class server_obj : public ksnp::unique_obj<ksnp_server *, ksnp_server_destroy>
@@ -418,6 +426,11 @@ public:
     auto keep_alive_fail(ksnp_status_code reason, char const *message)
     {
         check_error(::ksnp_server_keep_alive_fail(**this, reason, message));
+    }
+
+    void close_connection(ksnp_close_direction dir)
+    {
+        check_error(::ksnp_server_close_connection(**this, dir));
     }
 };
 
@@ -730,7 +743,7 @@ io_loop_start:
                         std::cout << "Remote closed the connection\n";
                         // If reading from the socket indicates EOF, inform the
                         // client/server connection.
-                        conn.read_data({});
+                        conn.close_connection(ksnp_close_direction::KSNP_CLOSE_READ);
                         break;
                     } else {
                         read_buffer.fill(static_cast<size_t>(count));

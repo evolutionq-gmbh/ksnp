@@ -12,7 +12,7 @@ use crate::{
     message::MessageContext,
     processor::Processor,
     sys::{self, ksnp_error},
-    types::{StreamAcceptedParams, StreamOpenParams, StreamQosParams, map_err},
+    types::{CloseDirection, StreamAcceptedParams, StreamOpenParams, StreamQosParams, map_err},
 };
 
 /// Wrapper for a [`sys::ksnp_server`].
@@ -179,6 +179,12 @@ impl<'ctx> ServerConnection {
                 message.map_or(null(), CStr::as_ptr),
             )
         })?;
+        Ok(())
+    }
+
+    pub fn close_connection(&mut self, dir: CloseDirection) -> Result<(), ksnp_error> {
+        // SAFETY: server is a valid writeable pointer.
+        map_err(unsafe { sys::ksnp_server_close_connection(self.server, dir.into()) })?;
         Ok(())
     }
 }

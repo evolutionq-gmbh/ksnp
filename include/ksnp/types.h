@@ -331,6 +331,22 @@ union ksnp_stream_reply_params {
 };
 
 /**
+ * @enum ksnp_close_direction
+ * @brief Enumeration of possible directions for a close operation.
+ */
+ENUM_TYPE(ksnp_close_direction, uint8_t){
+    /// @brief The read direction is closed.
+    KSNP_CLOSE_READ  = 1,
+    /// @brief The write direction is closed.
+    KSNP_CLOSE_WRITE = 2,
+    /// @brief Both read and write directions are closed.
+    KSNP_CLOSE_BOTH  = 3,
+};
+
+/// @brief Alias for @ref ksnp_close_direction.
+ENUM_TYPE_T(ksnp_close_direction, uint8_t);
+
+/**
  * @enum ksnp_error_code
  * @brief Enumeration of possible protocol errors that may be sent as part of
  * an error message.

@@ -17,7 +17,6 @@
 #include <iostream>
 #include <netdb.h>
 #include <netinet/in.h>
-#include <optional>
 #include <sys/socket.h>
 #include <uuid/uuid.h>
 #include <vector>

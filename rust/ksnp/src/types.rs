@@ -448,3 +448,23 @@ impl<'evt> StreamQosParams<'evt> {
         }
     }
 }
+
+/// Direction in which a connection should be closed.
+pub enum CloseDirection {
+    /// Close the read direction.
+    Read,
+    /// Close the write direction.
+    Write,
+    /// Close both directions.
+    Both,
+}
+
+impl From<CloseDirection> for sys::ksnp_close_direction {
+    fn from(value: CloseDirection) -> Self {
+        match value {
+            CloseDirection::Read => Self::KSNP_CLOSE_READ,
+            CloseDirection::Write => Self::KSNP_CLOSE_WRITE,
+            CloseDirection::Both => Self::KSNP_CLOSE_BOTH,
+        }
+    }
+}

@@ -15,4 +15,6 @@ pub use client::{ClientConnection, ClientEvent};
 pub use message::{Message, MessageContext};
 pub use processor::Processor;
 pub use server::{ServerConnection, ServerEvent, Stream, StreamImpl};
-pub use types::{Address, Qos, Rate, StreamAcceptedParams, StreamOpenParams, StreamQosParams};
+pub use types::{
+    Address, CloseDirection, Qos, Rate, StreamAcceptedParams, StreamOpenParams, StreamQosParams,
+};

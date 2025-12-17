@@ -119,7 +119,7 @@ public:
     void keep_alive_ok();
     void keep_alive_fail(ksnp_status_code reason, char const *message);
 
-    void close_connection();
+    void close_connection(ksnp_close_direction dir);
 
 private:
     [[nodiscard]] auto process_message(ksnp_message const &msg) -> std::optional<ksnp::server_event>;

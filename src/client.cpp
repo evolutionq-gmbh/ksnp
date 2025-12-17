@@ -319,12 +319,28 @@ void ksnp_client::keep_alive(uuid_t const &stream_id)
     this->push_message(msg);
 }
 
-void ksnp_client::close_connection()
+void ksnp_client::close_connection(ksnp_close_direction dir)
 {
-    if (this->in_shutdown) {
-        throw exception(ksnp_error::KSNP_E_INVALID_OPERATION);
+    bool close_read  = dir == ksnp_close_direction::KSNP_CLOSE_READ || dir == ksnp_close_direction::KSNP_CLOSE_BOTH;
+    bool close_write = dir == ksnp_close_direction::KSNP_CLOSE_WRITE || dir == ksnp_close_direction::KSNP_CLOSE_BOTH;
+    if (!close_read && !close_write) {
+        throw exception(ksnp_error::KSNP_E_INVALID_ARGUMENT);
     }
-    this->in_shutdown = true;
+
+    if (close_read) {
+        size_t len = 0;
+        if (auto res = ::ksnp_message_context_read_data(this->connection, nullptr, &len);
+            res != ksnp_error::KSNP_E_NO_ERROR) {
+            throw ksnp::exception(res);
+        }
+    }
+
+    if (close_write) {
+        if (this->in_shutdown) {
+            throw exception(ksnp_error::KSNP_E_INVALID_OPERATION);
+        }
+        this->in_shutdown = true;
+    }
 }
 
 auto ksnp_client_create(struct ksnp_client **client, ksnp_message_context *ctx) noexcept -> ksnp_error
@@ -370,7 +386,6 @@ auto ksnp_client_want_write(struct ksnp_client const *client) noexcept -> bool
 }
 
 auto ksnp_client_write_data(struct ksnp_client *client, uint8_t *data, size_t *len) noexcept -> ksnp_error
-
 try {
     *len = client->write_data(std::span{data, *len});
     return ksnp_error::KSNP_E_NO_ERROR;
@@ -413,9 +428,9 @@ try {
 }
 CATCH_ALL
 
-auto ksnp_client_close_connection(struct ksnp_client *client) noexcept -> ksnp_error
+auto ksnp_client_close_connection(struct ksnp_client *client, ksnp_close_direction dir) noexcept -> ksnp_error
 try {
-    client->close_connection();
+    client->close_connection(dir);
     return ksnp_error::KSNP_E_NO_ERROR;
 }
 CATCH_ALL
