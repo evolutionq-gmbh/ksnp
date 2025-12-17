@@ -72,7 +72,11 @@ auto ksnp_client::next_event() -> std::optional<client_event>
                 return event;
             }
         } else if (res == ksnp_error::KSNP_E_PROTOCOL_ERROR) {
-            throw ksnp::protocol_exception(protocol_error);
+            this->stream_state = stream_state::error;
+            return ksnp_client_event_error{
+                .code        = protocol_error.code,
+                .description = protocol_error.description,
+            };
         } else {
             throw ksnp::exception(res);
         }
