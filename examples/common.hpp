@@ -768,7 +768,7 @@ io_loop_start:
                 }
             }
 
-            if (!wait_read) {
+            if (!conn.want_read()) {
                 // Check if an event occurs after processing. If so, check
                 // if it can be handled by the connection wrapper directly.
                 // If not, return it.
