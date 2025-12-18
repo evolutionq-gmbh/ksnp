@@ -23,6 +23,7 @@
 
 #include "helpers.hpp"
 #include "ksnp/client.h"
+#include "ksnp/messages.h"
 #include "ksnp/serde.h"
 #include "ksnp/server.h"
 #include "ksnp/types.h"
@@ -661,12 +662,9 @@ template<typename T>
 requires(IoProcessor<T>)
 class connection_handler
 {
-    /// @brief Size of the send and receive buffers.
-    static size_t const BUFFER_CAPACITY = 1024;
-
-    fd     sock;
-    buffer read_buffer;
-    buffer write_buffer;
+    fd                  sock;
+    ksnp::vector_buffer read_buffer;
+    ksnp::vector_buffer write_buffer;
 
     message_context_t msg_context;
     T                 conn;
@@ -674,10 +672,12 @@ class connection_handler
 public:
     explicit connection_handler(fd sock)
         : sock(std::move(sock))
-        , read_buffer(BUFFER_CAPACITY)
-        , write_buffer(BUFFER_CAPACITY)
+        , msg_context(this->read_buffer.ksnp_buffer_ptr(), this->write_buffer.ksnp_buffer_ptr())
         , conn(T(this->msg_context))
-    {}
+    {
+        this->read_buffer.reserve(KSNP_MAX_MSG_LEN);
+        this->write_buffer.reserve(KSNP_MAX_MSG_LEN);
+    }
 
     connection_handler(connection_handler const &) = delete;
     connection_handler(connection_handler &&)      = delete;
@@ -721,58 +721,50 @@ io_loop_start:
             // Write all pending data until no further data is pending, or the
             // socket is blocked.
             while (!wait_write && conn.want_write()) {
-                // First fill the egress buffer as must as possible to keep the
-                // load off the internal client/server connection buffer.
-                if (!write_buffer.full()) {
-                    auto to_write = conn.write_data(write_buffer.remaining());
-                    write_buffer.fill(to_write);
-                }
-
+                conn.flush_data();
                 // Move data from the egress buffer to the socket.
-                if (!write_buffer.empty()) {
-                    auto count = ::write(*sock, write_buffer.data(), write_buffer.size());
-                    if (count == -1) {
-                        if (errno != EWOULDBLOCK) {
-                            throw errno_exception(errno, "Failed to write to socket");
-                        }
-                        wait_write = true;
-                        break;
+                auto count = ::write(*sock, write_buffer.data(), write_buffer.size());
+                if (count == -1) {
+                    if (errno != EWOULDBLOCK) {
+                        throw errno_exception(errno, "Failed to write to socket");
                     }
-                    write_buffer.consume(static_cast<size_t>(count));
+                    wait_write = true;
+                    break;
                 }
+                assert(count > 0);
+                write_buffer.erase(write_buffer.begin(), write_buffer.begin() + count);
             }
 
             // Read all data from the socket until no further data is available,
             // or the input buffer no longer requires more data to progress.
             while (!wait_read && conn.want_read()) {
                 // If no ingress data is buffered, read some from the socket.
-                if (read_buffer.empty()) {
-                    auto remaining = read_buffer.remaining();
+                auto orig_len = read_buffer.size();
+                read_buffer.resize(read_buffer.capacity());
 
-                    auto count = ::read(*sock, remaining.data(), remaining.size());
+                try {
+                    auto count = ::read(*sock, read_buffer.data() + orig_len, read_buffer.size() - orig_len);
                     if (count == -1) {
                         if (errno != EWOULDBLOCK) {
                             throw errno_exception(errno, "Failed to read from socket");
                         }
                         wait_read = true;
+                        read_buffer.resize(orig_len);
                         break;
                     } else if (count == 0) {  // NOLINT(readability-else-after-return)
+                        read_buffer.resize(orig_len);
                         std::cout << "Remote closed the connection\n";
                         // If reading from the socket indicates EOF, inform the
                         // client/server connection.
                         conn.close_connection(ksnp_close_direction::KSNP_CLOSE_READ);
                         break;
                     } else {
-                        read_buffer.fill(static_cast<size_t>(count));
+                        read_buffer.resize(orig_len + count);
                     }
-                }
 
-                // If ingress data is available, write it to the client/server
-                // connection. After doing so, check for events. Return if an
-                // event is triggered.
-                if (!read_buffer.empty()) {
-                    auto to_read = conn.read_data(read_buffer.filled());
-                    read_buffer.consume(to_read);
+                } catch (...) {
+                    read_buffer.resize(orig_len);
+                    throw;
                 }
             }
 

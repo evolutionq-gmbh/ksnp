@@ -4,6 +4,7 @@
 #include <cstring>
 
 #include <boost/test/unit_test.hpp>
+#include <iterator>
 #include <json_object.h>
 #include <json_types.h>
 
@@ -46,6 +47,44 @@ BOOST_AUTO_TEST_CASE(test_message_context_basics)
     // Reading a version message set want_read to false and make the message
     // available.
     BOOST_TEST(ctx.read_data({version_data}) == 6);
+    BOOST_TEST(!ctx.want_read());
+    auto next_message = ctx.next_event();
+    BOOST_REQUIRE(next_message.has_value());
+    BOOST_CHECK(*next_message == version_message);
+
+    // Having read the version message, more input should be required, until EOF
+    BOOST_TEST(ctx.want_read());
+    ctx.read_data({});
+    BOOST_TEST(!ctx.want_read());
+}
+
+BOOST_AUTO_TEST_CASE(test_message_context_buffer)
+{
+    ksnp::vector_buffer   read_buffer;
+    ksnp::vector_buffer   write_buffer;
+    message_context_t     ctx(read_buffer.ksnp_buffer_ptr(), write_buffer.ksnp_buffer_ptr());
+    ksnp::message_t const version_message = ksnp_msg_version{
+        .minimum_version = ksnp_protocol_version::PROTOCOL_V1,
+        .maximum_version = ksnp_protocol_version::PROTOCOL_V1,
+    };
+    std::array<unsigned char, 6> const version_data{0, 1, 0, 6, 1, 1};
+
+    // An empty context needs input, has no output
+    BOOST_TEST(ctx.want_read());
+    BOOST_TEST(!ctx.want_write());
+    BOOST_TEST(!ctx.next_event().has_value());
+
+    auto raw_msg = into_message(version_message);
+    ctx.write_message(&raw_msg);
+    BOOST_TEST(ctx.want_write());
+    BOOST_TEST(write_buffer.std::vector<unsigned char>::size() == 6);
+    BOOST_TEST(std::memcmp(write_buffer.std::vector<unsigned char>::data(), version_data.data(), 6) == 0);
+    write_buffer.clear();
+    BOOST_TEST(!ctx.want_write());
+
+    // Reading a version message set want_read to false and make the message
+    // available.
+    std::ranges::copy(version_data, std::back_inserter(read_buffer));
     BOOST_TEST(!ctx.want_read());
     auto next_message = ctx.next_event();
     BOOST_REQUIRE(next_message.has_value());
