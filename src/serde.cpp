@@ -2,6 +2,7 @@
 #include <cassert>
 #include <climits>
 #include <compare>
+#include <concepts>
 #include <cstdint>
 #include <cstring>
 #include <deque>
@@ -89,26 +90,15 @@ auto operator<=>(struct ksnp_rate const &lhs, struct ksnp_rate const &rhs) -> st
 }
 
 template<std::unsigned_integral TargetUint, typename U8>
-auto constexpr load_count() -> size_t
+constexpr auto uint_from_be(std::span<U8, sizeof(TargetUint)> data) noexcept -> TargetUint
 requires(std::is_same_v<std::decay_t<U8>, uint8_t>)
 {
-    using target_info = std::numeric_limits<TargetUint>;
-    using byte_info   = std::numeric_limits<U8>;
-
-    return (target_info::digits + byte_info::digits - 1) / byte_info::digits;
-}
-
-template<std::unsigned_integral TargetUint, typename U8, size_t Extent>
-auto load_next(std::span<U8, Extent> data) noexcept -> TargetUint
-requires(std::is_same_v<std::decay_t<U8>, uint8_t>
-         && (Extent != std::dynamic_extent && Extent >= load_count<TargetUint, U8>()))
-{
-    int const COUNT = load_count<TargetUint, U8>();
+    constexpr int BITS = std::numeric_limits<U8>::digits;
 
     auto val = static_cast<TargetUint>(data[0]);
-    if constexpr (COUNT > 1) {
-        for (U8 byte: data.subspan(1, COUNT - 1)) {
-            val <<= std::numeric_limits<U8>::digits;
+    if constexpr (sizeof(TargetUint) > 1) {
+        for (U8 byte: data.subspan(1)) {
+            val <<= BITS;
             val |= byte;
         }
     }
@@ -119,12 +109,12 @@ template<std::unsigned_integral TargetUint, typename U8>
 auto load_next(std::span<U8, std::dynamic_extent> &data) -> TargetUint
 requires(std::is_same_v<std::decay_t<U8>, uint8_t>)
 {
-    constexpr size_t COUNT = load_count<TargetUint, U8>();
+    constexpr size_t COUNT = sizeof(TargetUint);
     if (data.size() < COUNT) {
         throw ksnp::protocol_exception(ksnp_error_code::KSNP_PROT_E_BAD_MSG_LENGTH);
     }
 
-    auto val = load_next<TargetUint>(data.template subspan<0, COUNT>());
+    auto val = uint_from_be<TargetUint>(data.template first<COUNT>());
     data     = data.subspan(COUNT);
     return val;
 }
@@ -135,8 +125,8 @@ auto load_next_u8(std::span<U8> &data) -> uint8_t
     return load_next<uint8_t>(data);
 }
 
-template<typename U8, size_t extent>
-auto load_next_u16(std::span<U8, extent> &data) -> uint16_t
+template<typename U8>
+auto load_next_u16(std::span<U8> &data) -> uint16_t
 {
     return load_next<uint16_t>(data);
 }
@@ -153,17 +143,19 @@ auto load_next_enum(std::span<U8> &data) -> T
     return static_cast<T>(load_next<typename std::underlying_type_t<T>>(data));
 }
 
-template<std::unsigned_integral SourceUint, std::output_iterator<unsigned char> It>
-void store_uint(SourceUint val, It output)
+template<std::unsigned_integral SourceUint, typename U8 = unsigned char>
+constexpr auto uint_to_be(SourceUint val) -> std::array<U8, sizeof(SourceUint)>
 {
-    using source_info = std::numeric_limits<SourceUint>;
-    using byte_info   = std::numeric_limits<unsigned char>;
+    constexpr std::size_t COUNT = sizeof(SourceUint);
+    constexpr int         BITS  = std::numeric_limits<U8>::digits;
 
-    int const COUNT = (source_info::digits + byte_info::digits - 1) / byte_info::digits;
+    std::array<U8, COUNT> result{};
 
-    for (int i = 0; i < COUNT; i++) {
-        *output++ = (val >> (byte_info::digits * (COUNT - i - 1))) & byte_info::max();
+    for (size_t i = 0; i < result.size(); i++) {
+        result[i] = static_cast<U8>(val >> (BITS * (COUNT - i - 1)));
     }
+
+    return result;
 }
 
 template<std::unsigned_integral T>
@@ -467,7 +459,7 @@ private:
         this->parsed_json.reset();
         this->registered_qos_lists.clear();
         auto msg_len_ser = std::span{this->input_data}.subspan<2, sizeof(uint16_t)>();
-        auto msg_len     = load_next_u16(msg_len_ser);
+        auto msg_len     = uint_from_be<uint16_t>(msg_len_ser);
         this->input_data.erase(this->input_data.begin(), this->input_data.begin() + msg_len);
     }
 
@@ -534,21 +526,27 @@ private:
         return this->parsed_json->get();
     }
 
+    template<std::unsigned_integral T>
+    void write_uint(T val)
+    {
+        auto bytes = uint_to_be(val);
+        std::ranges::copy(bytes, std::back_inserter(this->output_data));
+    }
+
     void write_u16(uint16_t val)
     {
-        store_uint(val, std::back_inserter(this->output_data));
+        write_uint(val);
     }
 
     void write_u32(uint32_t val)
     {
-        store_uint(val, std::back_inserter(this->output_data));
+        write_uint(val);
     }
 
     template<typename T>
     void write_enum(T val)
     {
-        store_uint<typename std::underlying_type_t<T>>(static_cast<typename std::underlying_type_t<T>>(val),
-                                                       std::back_inserter(this->output_data));
+        write_uint(static_cast<typename std::underlying_type_t<T>>(val));
     }
 
     void write_json(json_object *obj, json_ser_flag flag)
@@ -1182,7 +1180,7 @@ public:
             // Overwrite the placeholder in the output queue by the message length.
             auto len_it = this->output_data.begin()
                         + static_cast<decltype(this->output_data)::difference_type>(orig_out_len) + sizeof(uint16_t);
-            store_uint<uint16_t>(static_cast<uint16_t>(msg_len), len_it);
+            std::ranges::copy(uint_to_be(static_cast<uint16_t>(msg_len)), len_it);
         } catch (...) {
             // Erase data inserted into output queue, if any, then rethrow.
             this->output_data.resize(orig_out_len);
