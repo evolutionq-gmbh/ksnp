@@ -35,8 +35,8 @@ private:
      *
      * The resulting span is valid only until the next call to @ref next_chunk or @ref add_key_data.
      *
-     * @return A span containing the key data to sent (which is a multiple of
-     * the chunk size), or nothing if no key data is available.
+     * @return A span containing the key data to sent (which contains exactly
+     * one chunk), or nothing if no key data is available.
      */
     auto next_chunk() -> std::optional<std::span<uint8_t const>>;
 

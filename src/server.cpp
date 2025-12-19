@@ -438,14 +438,11 @@ auto simple_stream::next_chunk() -> std::optional<std::span<uint8_t const>>
                                      this->provisioned_data.begin() + static_cast<diff_t>(this->prev_read));
     }
 
-    auto avail      = this->provisioned_data.size();
-    avail           = std::min(avail, static_cast<size_t>(std::numeric_limits<uint16_t>::max()));
-    this->prev_read = avail - (avail % this->chunk_size);
-
-    if (this->prev_read == 0) {
+    auto avail = this->provisioned_data.size();
+    if (avail < this->chunk_size) {
         return std::nullopt;
     }
-
+    this->prev_read = this->chunk_size;
     return std::span(this->provisioned_data).first(this->prev_read);
 }
 

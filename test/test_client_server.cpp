@@ -371,7 +371,9 @@ BOOST_AUTO_TEST_CASE(test_connection_client_chunk_size)
     key_data.len = (2 * CHUNK_SIZE) + (CHUNK_SIZE / 2);
     check_error(ksnp_simple_stream_add_key_data(*stream, key_data));
     conn.complete_io();
-    key_event.key_data.len = static_cast<size_t>(2 * CHUNK_SIZE);
+    key_event.key_data.len = static_cast<size_t>(CHUNK_SIZE);
+    BOOST_CHECK(conn.client().next_event() == ksnp::client_event{key_event});
+    conn.complete_io();
     BOOST_CHECK(conn.client().next_event() == ksnp::client_event{key_event});
 
     // Finalize last chunk
