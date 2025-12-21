@@ -256,7 +256,7 @@ enum class json_ser_flag : uint8_t {
     with_length,
 };
 
-[[nodiscard]] auto json_to_stream_id(json_object *obj, ksnp_key_stream_id &stream_id)
+void json_to_stream_id(json_object *obj, ksnp_key_stream_id &stream_id)
 {
     if (json_object_get_type(obj) != json_type_string) {
         throw ksnp::protocol_exception(ksnp_error_code::KSNP_PROT_E_BAD_JSON_TYPE);
@@ -290,6 +290,31 @@ template<std::unsigned_integral TargetUint>
     return json_to_uint<uint32_t>(obj);
 }
 
+template<typename... string_views>
+[[nodiscard]] constexpr inline bool key_allowed(std::string_view key, string_views... allowed_keys) noexcept
+{
+    return ((key == allowed_keys) || ...);
+}
+
+template<typename... string_views>
+void check_subobject_allowed_keys(json_object const *obj, string_views... allowed_keys)
+{
+    if (json_object_get_type(obj) != json_type_object) {
+        throw ksnp::protocol_exception(ksnp_error_code::KSNP_PROT_E_BAD_JSON_TYPE);
+    }
+    auto end_iter = json_object_iter_end(obj);
+    // Unfortunately, json-c does not currently provide an API for const
+    // iterators. Since we're only peeking at keys here, and do not
+    // modify anything, we const_cast the object to preserve const
+    // correctness of the calling function tree.
+    for (auto it = json_object_iter_begin(const_cast<json_object *>(obj)); json_object_iter_equal(&it, &end_iter) == 0;
+         json_object_iter_next(&it)) {
+        if (!key_allowed(json_object_iter_peek_name(&it), allowed_keys...)) {
+            throw ksnp::protocol_exception(ksnp_error_code::KSNP_PROT_E_BAD_JSON_KEY);
+        }
+    }
+}
+
 [[nodiscard]] auto get_subobject_string(json_object const *obj, zstring_view key) -> char const *
 {
     json_object *subobj = nullptr;
@@ -304,18 +329,20 @@ template<std::unsigned_integral TargetUint>
 
 [[nodiscard]] auto json_to_address(json_object const *obj) -> ksnp_address
 {
-    if (json_object_get_type(obj) != json_type_object) {
-        throw ksnp::protocol_exception(ksnp_error_code::KSNP_PROT_E_BAD_JSON_TYPE);
-    }
+    // First check the type of the subobject, and whether it contains
+    // unknown keys.
+    check_subobject_allowed_keys(obj, json_key_address_sae, json_key_address_network);
+
+    // Extract address strings.
     return ksnp_address{.sae     = get_subobject_string(obj, json_key_address_sae),
                         .network = get_subobject_string(obj, json_key_address_network)};
 }
 
 [[nodiscard]] auto json_to_rate(json_object const *obj) -> ksnp_rate
 {
-    if (json_object_get_type(obj) != json_type_object) {
-        throw ksnp::protocol_exception(ksnp_error_code::KSNP_PROT_E_BAD_JSON_TYPE);
-    }
+    // First check the type of the subobject, and whether it contains
+    // unknown keys.
+    check_subobject_allowed_keys(obj, json_key_rate_bits, json_key_rate_seconds);
 
     // The seconds member is optional. The bits member is required.
     ksnp_rate    rate = {.bits = 0, .seconds = 0};
@@ -337,6 +364,12 @@ template<typename QosExpectedValue,
          decltype(std::declval<QosExpectedValue>().range.min) (*ParseObj)(json_object const *)>
 [[nodiscard]] auto json_to_qos_range(json_object const *obj) -> QosExpectedValue
 {
+    // First check the type of the subobject, and whether it contains
+    // unknown keys.
+    check_subobject_allowed_keys(obj, json_key_qos_range_min, json_key_qos_range_max);
+
+    // Get the min and max subobjects and parse them using the given
+    // callback.
     json_object *min_obj;
     json_object *max_obj;
     if (!json_object_object_get_ex(obj, json_key_qos_range_min.c_str(), &min_obj)

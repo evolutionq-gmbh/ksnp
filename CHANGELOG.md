@@ -11,7 +11,7 @@ Version 0.2
 * Message context accepts user-provided buffers. These buffers can be used to
   read and write data with one less copy. The client and server objects have a
   flush_data function to be used in lieu of write_data.
-* Fix various bugs.
+* Fix various bugs and check for more cases of invalid data.
 
 Version 0.1
 -----------
