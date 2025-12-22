@@ -332,8 +332,8 @@ auto parse_command(std::string line) -> std::optional<command>
 
 auto main(int argc, char *argv[]) -> int
 try {
-    if (argc < 3) {
-        std::cerr << "Usage: " << argv[0] << " host port [ksid]" << '\n';
+    if (argc != 3) {
+        std::cerr << "Usage: " << argv[0] << " host port" << '\n';
         exit(EXIT_FAILURE);
     }
 

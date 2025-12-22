@@ -203,8 +203,8 @@ void run_server(fd sock)
 
 auto main(int argc, char *argv[]) noexcept -> int
 try {
-    if (argc < 3) {
-        std::cerr << "Usage: " << argv[0] << " host port" << '\n';
+    if (argc != 3) {
+        std::cerr << "Usage: " << argv[0] << " addr port" << '\n';
         exit(EXIT_FAILURE);
     }
 
