@@ -1,7 +1,9 @@
 use core::{
-    ffi::CStr,
+    any::Any,
+    ffi::{CStr, c_uchar},
     mem::MaybeUninit,
     num::NonZero,
+    pin::Pin,
     ptr::{self, null, null_mut},
     slice,
     time::Duration,
@@ -10,18 +12,388 @@ use core::{
 use uuid::Uuid;
 
 use crate::{
-    processor::Processor,
     sys::{self, ksnp_error},
     types::{StreamAcceptedParams, StreamOpenParams, StreamQosParams, map_err, string_ref},
 };
 
+pub trait BufferImpl: Any + Unpin {
+    /// Return the data stored currently in the buffer
+    fn data(&mut self) -> &mut [u8];
+
+    /// Returns the size of the buffer.
+    fn size(&self) -> usize;
+
+    fn consume(&mut self, count: usize);
+
+    fn append(&mut self, data: &[u8]) -> Result<(), ksnp_error>;
+
+    fn truncate(&mut self, count: usize);
+}
+
+// It is important the base member is the first member.
+#[repr(C)]
+pub struct Buffer<T: ?Sized> {
+    // Note that no method may modify base after being constructed, so it can
+    // safely be shared with a server.
+    base: sys::ksnp_buffer,
+    this: T,
+}
+
+impl<T: BufferImpl> Buffer<T> {
+    const BASE_OFFSET: usize = core::mem::offset_of!(Self, base);
+
+    /// Converts a raw stream pointer to a self reference.
+    ///
+    /// # Safety
+    ///
+    /// The pointer must have been created from the address of Self::base, and
+    /// point into a valid instance of self. Furthermore, the lifetime of the
+    /// resulting reference may not exceed that of the given pointer.
+    unsafe fn buffer_to_self<'a>(buffer: *const sys::ksnp_buffer) -> &'a Self {
+        // SAFETY: The stream parameter points to an instance of Self::base,
+        // so the self pointer is found by subtracting the base offset.
+        unsafe { buffer.byte_sub(Self::BASE_OFFSET).cast::<Self>().as_ref() }.unwrap()
+    }
+
+    /// Converts a raw stream pointer to a mutable self reference.
+    ///
+    /// # Safety
+    ///
+    /// The pointer must have been created from the address of Self::base, and
+    /// point into a valid instance of self. Furthermore, the lifetime of the
+    /// resulting reference may not exceed that of the given pointer.
+    unsafe fn buffer_to_self_mut<'a>(buffer: *mut sys::ksnp_buffer) -> &'a mut Self {
+        // SAFETY: The stream parameter points to an instance of Self::base,
+        // so the self pointer is found by subtracting the base offset.
+        unsafe { buffer.byte_sub(Self::BASE_OFFSET).cast::<Self>().as_mut() }.unwrap()
+    }
+
+    pub fn new(this: T) -> Self {
+        Self {
+            base: sys::ksnp_buffer {
+                data: Some(Self::data),
+                size: Some(Self::size),
+                consume: Some(Self::consume),
+                append: Some(Self::append),
+                truncate: Some(Self::truncate),
+            },
+            this,
+        }
+    }
+
+    extern "C" fn data(buffer: *mut sys::ksnp_buffer) -> *mut c_uchar {
+        // SAFETY: The buffer parameter points to an instance of Self::base, as
+        // only the base's data method can call here.
+        unsafe { Self::buffer_to_self_mut(buffer) }
+            .this
+            .data()
+            .as_mut_ptr()
+    }
+
+    extern "C" fn size(buffer: *mut sys::ksnp_buffer) -> usize {
+        // SAFETY: The buffer parameter points to an instance of Self::base, as
+        // only the base's size method can call here.
+        unsafe { Self::buffer_to_self(buffer) }.this.size()
+    }
+
+    extern "C" fn consume(buffer: *mut sys::ksnp_buffer, count: usize) {
+        // SAFETY: The buffer parameter points to an instance of Self::base, as
+        // only the base's size method can call here.
+        unsafe { Self::buffer_to_self_mut(buffer) }
+            .this
+            .consume(count);
+    }
+
+    extern "C" fn append(
+        buffer: *mut sys::ksnp_buffer,
+        data: *const c_uchar,
+        len: usize,
+    ) -> ksnp_error {
+        // SAFETY: The buffer parameter points to an instance of Self::base, as
+        // only the base's size method can call here.
+        match unsafe { Self::buffer_to_self_mut(buffer) }
+            .this
+            // SAFETY: The input buffer points to valid data.
+            .append(unsafe { slice::from_raw_parts(data, len) })
+        {
+            Ok(()) => ksnp_error::KSNP_E_NO_ERROR,
+            Err(e) => e,
+        }
+    }
+
+    extern "C" fn truncate(buffer: *mut sys::ksnp_buffer, count: usize) {
+        // SAFETY: The buffer parameter points to an instance of Self::base, as
+        // only the base's size method can call here.
+        unsafe { Self::buffer_to_self_mut(buffer) }
+            .this
+            .truncate(count);
+    }
+}
+
+impl<T: ?Sized> Buffer<T> {
+    /// Returns a pointer to the sys::ksnp_buffer object within.
+    ///
+    /// This pointer can be used to have a message context use this buffer.
+    ///
+    /// # Safety
+    ///
+    /// The resulting pointee may not be modified via this pointer. However,
+    /// the callbacks defined within may be used to perform modifications.
+    pub(crate) unsafe fn buffer_ptr(&self) -> *mut sys::ksnp_buffer {
+        (&raw const self.base).cast_mut()
+    }
+
+    pub fn buffer_impl(&self) -> &T {
+        &self.this
+    }
+
+    pub fn buffer_impl_mut(&mut self) -> &mut T {
+        &mut self.this
+    }
+}
+
+impl<T: BufferImpl> From<T> for Buffer<T> {
+    fn from(value: T) -> Self {
+        Self::new(value)
+    }
+}
+
+impl BufferImpl for Vec<u8> {
+    fn data(&mut self) -> &mut [u8] {
+        self.as_mut_slice()
+    }
+
+    fn size(&self) -> usize {
+        self.len()
+    }
+
+    fn consume(&mut self, count: usize) {
+        self.drain(..count);
+    }
+
+    fn append(&mut self, data: &[u8]) -> Result<(), ksnp_error> {
+        if self.try_reserve(data.len()).is_err() {
+            return Err(ksnp_error::KSNP_E_NO_MEM);
+        }
+        self.extend_from_slice(data);
+        Ok(())
+    }
+
+    fn truncate(&mut self, count: usize) {
+        self.truncate(count);
+    }
+}
+
 /// Wrapper for a [`sys::ksnp_message_context`].
 pub struct MessageContext {
     pub(crate) ctx: *mut sys::ksnp_message_context,
+    read_buffer: Option<Pin<Box<Buffer<dyn BufferImpl>>>>,
+    write_buffer: Option<Pin<Box<Buffer<dyn BufferImpl>>>>,
 }
 
 // SAFETY: The sys::ksnp_message_context can be moved across threads safely.
 unsafe impl Send for MessageContext {}
+
+impl Drop for MessageContext {
+    fn drop(&mut self) {
+        // SAFETY: self.ctx is valid for the lifetime of this wrapper.
+        unsafe { sys::ksnp_message_context_destroy(self.ctx) };
+    }
+}
+
+impl MessageContext {
+    /// Creates a new [`sys::ksnp_message_context`] wrapper with a new
+    /// message_context.
+    ///
+    /// The default read and write buffers are used for the message context.
+    /// Therefore, data must be read and written using [`Self::read_data`] and
+    /// [`Self::write_data`].
+    pub fn new() -> Option<Self> {
+        let mut ctx: *mut sys::ksnp_message_context = null_mut();
+        // SAFETY: ctx is a valid writeable pointer.
+        unsafe { sys::ksnp_message_context_create(&raw mut ctx) };
+        if ctx.is_null() {
+            None
+        } else {
+            Some(Self {
+                ctx,
+                read_buffer: None,
+                write_buffer: None,
+            })
+        }
+    }
+
+    /// Creates a new [`sys::ksnp_message_context`] wrapper with a new
+    /// message_context that uses user-provided buffers.
+    ///
+    /// Data can be read/written using either [`Self::read_data`] and
+    /// [`Self::write_data`], or by interacting with the buffers directly, which
+    /// are accessible via [`Self::read_buf`] and [`Self::write_buf`].
+    pub fn with_buffers<T: BufferImpl + 'static, U: BufferImpl + 'static>(
+        read_buffer: T,
+        write_buffer: U,
+    ) -> Option<Self> {
+        let read_buffer = Box::pin(Buffer::new(read_buffer));
+        let write_buffer = Box::pin(Buffer::new(write_buffer));
+
+        let mut ctx: *mut sys::ksnp_message_context = null_mut();
+        // SAFETY: ctx is a valid writeable pointer. The buffer pointers will
+        // not move since they are contained by Arc.
+        unsafe {
+            sys::ksnp_message_context_create_with_buffer(
+                &raw mut ctx,
+                read_buffer.buffer_ptr(),
+                write_buffer.buffer_ptr(),
+            )
+        };
+        if ctx.is_null() {
+            None
+        } else {
+            Some(Self {
+                ctx,
+                read_buffer: Some(read_buffer),
+                write_buffer: Some(write_buffer),
+            })
+        }
+    }
+
+    /// Gets a reference to the read buffer that was using when this context was
+    /// constructed.
+    ///
+    /// The resulting reference can be downcast to a concrete type using the
+    /// [`Any`] trait.
+    ///
+    /// If no read buffer was specified, returns None.
+    pub fn read_buf(&self) -> Option<&dyn BufferImpl> {
+        self.read_buffer.as_deref().map(Buffer::buffer_impl)
+    }
+
+    /// Gets a mutable reference to the read buffer that was using when this
+    /// context was constructed.
+    ///
+    /// The resulting reference can be downcast to a concrete type using the
+    /// [`Any`] trait.
+    ///
+    /// If no read buffer was specified, returns None.
+    pub fn read_buf_mut(&mut self) -> Option<&mut dyn BufferImpl> {
+        self.read_buffer.as_deref_mut().map(Buffer::buffer_impl_mut)
+    }
+
+    /// Gets a reference to the write buffer that was using when this context
+    /// was constructed.
+    ///
+    /// The resulting reference can be downcast to a concrete type using the
+    /// [`Any`] trait.
+    ///
+    /// If no write buffer was specified, returns None.
+    pub fn write_buf(&self) -> Option<&dyn BufferImpl> {
+        self.write_buffer.as_deref().map(Buffer::buffer_impl)
+    }
+
+    /// Gets a mutable reference to the write buffer that was using when this
+    /// context was constructed.
+    ///
+    /// The resulting reference can be downcast to a concrete type using the
+    /// [`Any`] trait.
+    ///
+    /// If no write buffer was specified, returns None.
+    pub fn write_buf_mut(&mut self) -> Option<&mut dyn BufferImpl> {
+        self.write_buffer
+            .as_deref_mut()
+            .map(Buffer::buffer_impl_mut)
+    }
+
+    /// Writes the given message into the write buffer used by the context.
+    pub fn write_message(&mut self, message: Message<'_>) -> Result<(), ksnp_error> {
+        let mut scratch = None;
+        // SAFETY: The pointers inside the message are valid for the duration of
+        // this call, as the argument stays valid. The scratch space is not
+        // modified by this function.
+        let message = unsafe { message.try_to_sys(&mut scratch) }?;
+        // SAFETY: The message and scratch space are valid for the duration of
+        // this call and not modified.
+        map_err(unsafe { sys::ksnp_message_context_write_message(self.ctx, &raw const message) })?;
+        Ok(())
+    }
+
+    /// Checks if more data is expected from the read buffer.
+    pub fn want_read(&self) -> bool {
+        // SAFETY: self.ctx is valid for the lifetime of this wrapper.
+        unsafe { sys::ksnp_message_context_want_read(self.ctx) }
+    }
+
+    /// Checks if more data can be written using the write buffer.
+    pub fn want_write(&self) -> bool {
+        // SAFETY: self.ctx is valid for the lifetime of this wrapper.
+        unsafe { sys::ksnp_message_context_want_write(self.ctx) }
+    }
+
+    /// Reads the given data into the read buffer.
+    ///
+    /// Returns the number of bytes read.
+    pub fn read_data(&mut self, data: &[u8]) -> Result<usize, ksnp_error> {
+        let mut len = data.len();
+        // SAFETY: self.ctx is valid for the lifetime of this wrapper, the
+        // buffer and size pointers are derived from valid instances, len is
+        // initialized properly.
+        map_err(unsafe {
+            sys::ksnp_message_context_read_data(self.ctx, data.as_ptr(), &raw mut len)
+        })?;
+        Ok(len)
+    }
+
+    /// Writes the stored data into the given buffer.
+    ///
+    /// Returns the number of bytes written.
+    pub fn write_data(&mut self, data: &mut [MaybeUninit<u8>]) -> Result<usize, ksnp_error> {
+        let mut len = data.len();
+        // SAFETY: self.ctx is valid for the lifetime of this wrapper, the
+        // buffer and size pointers are derived from valid instances, len is
+        // initialized properly.
+        map_err(unsafe {
+            sys::ksnp_message_context_write_data(
+                self.ctx,
+                data.as_mut_ptr().cast::<u8>(),
+                &raw mut len,
+            )
+        })?;
+        Ok(len)
+    }
+
+    /// Returns the next message event, if any.
+    pub fn next_event(&mut self) -> Result<MessageResult<'_>, ksnp_error> {
+        let mut value = null();
+        let mut protocol_error = sys::ksnp_protocol_error {
+            code: sys::ksnp_error_code::KSNP_PROT_E_UNKNOWN_ERROR,
+            description: null(),
+        };
+        // SAFETY: self.ctx is valid for the lifetime of this wrapper, the value
+        // pointer is writeable.
+        match map_err(unsafe {
+            sys::ksnp_message_context_next_message(
+                self.ctx,
+                &raw mut value,
+                &raw mut protocol_error,
+            )
+        }) {
+            Ok(()) => {
+                // SAFETY: The pointer is valid until the underlying context is
+                // modified. The exclusive borrow on self ensures this.
+                let msg = MessageResult::from(unsafe { value.as_ref() }.map(Message::from));
+                Ok(msg)
+            }
+            Err(ksnp_error::KSNP_E_PROTOCOL_ERROR) => {
+                Ok(MessageResult::ProtocolError {
+                    code: protocol_error.code.0,
+                    // SAFETY: The description is valid as long as this context is
+                    // not modified, which it can't due to the exclusive reference.
+                    description: unsafe { string_ref(protocol_error.description) },
+                })
+            }
+            Err(e) => Err(e),
+        }
+    }
+}
 
 #[derive(Debug)]
 pub enum Message<'ctx> {
@@ -526,113 +898,6 @@ impl<'ctx> From<&'ctx sys::ksnp_message> for Message<'ctx> {
                 // enumeration.
                 _ => unreachable!(),
             }
-        }
-    }
-}
-
-impl MessageContext {
-    /// Creates a new [`sys::ksnp_message_context`] wrapper with a new
-    /// message_context.
-    pub fn new() -> Option<Self> {
-        let mut ctx: *mut sys::ksnp_message_context = null_mut();
-        // SAFETY: ctx is a valid writeable pointer.
-        unsafe { sys::ksnp_message_context_create(&raw mut ctx) };
-        if ctx.is_null() {
-            None
-        } else {
-            Some(Self { ctx })
-        }
-    }
-
-    pub fn write_message(&mut self, message: Message<'_>) -> Result<(), ksnp_error> {
-        let mut scratch = None;
-        // SAFETY: The pointers inside the message are valid for the duration of
-        // this call, as the argument stays valid. The scratch space is not
-        // modified by this function.
-        let message = unsafe { message.try_to_sys(&mut scratch) }?;
-        // SAFETY: The message and scratch space are valid for the duration of
-        // this call and not modified.
-        map_err(unsafe { sys::ksnp_message_context_write_message(self.ctx, &raw const message) })?;
-        Ok(())
-    }
-}
-
-impl Drop for MessageContext {
-    fn drop(&mut self) {
-        // SAFETY: self.ctx is valid for the lifetime of this wrapper.
-        unsafe { sys::ksnp_message_context_destroy(self.ctx) };
-    }
-}
-
-impl Processor for MessageContext {
-    type Value<'a> = MessageResult<'a>;
-
-    fn want_read(&self) -> bool {
-        // SAFETY: self.ctx is valid for the lifetime of this wrapper.
-        unsafe { sys::ksnp_message_context_want_read(self.ctx) }
-    }
-
-    fn want_write(&self) -> bool {
-        // SAFETY: self.ctx is valid for the lifetime of this wrapper.
-        unsafe { sys::ksnp_message_context_want_write(self.ctx) }
-    }
-
-    fn read_data(&mut self, data: &[u8]) -> Result<usize, ksnp_error> {
-        let mut len = data.len();
-        // SAFETY: self.ctx is valid for the lifetime of this wrapper, the
-        // buffer and size pointers are derived from valid instances, len is
-        // initialized properly.
-        map_err(unsafe {
-            sys::ksnp_message_context_read_data(self.ctx, data.as_ptr(), &raw mut len)
-        })?;
-        Ok(len)
-    }
-
-    fn write_data(&mut self, data: &mut [MaybeUninit<u8>]) -> Result<usize, ksnp_error> {
-        let mut len = data.len();
-        // SAFETY: self.ctx is valid for the lifetime of this wrapper, the
-        // buffer and size pointers are derived from valid instances, len is
-        // initialized properly.
-        map_err(unsafe {
-            sys::ksnp_message_context_write_data(
-                self.ctx,
-                data.as_mut_ptr().cast::<u8>(),
-                &raw mut len,
-            )
-        })?;
-        Ok(len)
-    }
-
-    fn next_event(&mut self) -> Result<Self::Value<'_>, ksnp_error> {
-        let mut value = null();
-        let mut protocol_error = sys::ksnp_protocol_error {
-            code: sys::ksnp_error_code::KSNP_PROT_E_UNKNOWN_ERROR,
-            description: null(),
-        };
-        // SAFETY: self.ctx is valid for the lifetime of this wrapper, the value
-        // pointer is writeable.
-        match map_err(unsafe {
-            sys::ksnp_message_context_next_message(
-                self.ctx,
-                &raw mut value,
-                &raw mut protocol_error,
-            )
-        }) {
-            Ok(()) => {
-                // SAFETY: The pointer is valid until the underlying context is
-                // modified. The exclusive borrow on self ensures this.
-                let msg = MessageResult::from(unsafe { value.as_ref() }.map(Message::from));
-                Ok(msg)
-            }
-            Err(ksnp_error::KSNP_E_PROTOCOL_ERROR) => {
-                Ok(MessageResult::ProtocolError {
-                    code: protocol_error.code.0,
-                    // SAFETY: The description is valid as long as this context is
-                    // not modified, which it can't due to the exclusive reference.
-                    description: unsafe { string_ref(protocol_error.description) },
-                })
-            }
-            Err(e) => Err(e),
         }
     }
 }

@@ -25,6 +25,63 @@
 struct ksnp_message;
 
 /**
+ * @brief An abstract buffer that can be used for reading and writing message
+ * data.
+ *
+ * A buffer will store intermediate message data that can be used by a message
+ * context for message serialization and deserialization.
+ */
+struct ksnp_buffer {
+    /// @brief Pointer to a function that returns the pointer to the start of
+    /// the buffer.
+    ///
+    /// The size of the buffer can be determined using the @a size member. The
+    /// pointer may be NULL for an empty buffer.
+    ///
+    /// @param buffer The buffer to get the data pointer of.
+    /// @return Pointer to the buffer's data, may be NULL if the buffer is
+    /// empty.
+    unsigned char *(*data)(struct ksnp_buffer *buffer)NOEXCEPT;
+
+    /// @brief Pointer to a function that returns the size of the buffer.
+    ///
+    /// This corresponds to the number of bytes available in the buffer pointed
+    /// to by the @a data function.
+    ///
+    /// @param buffer The buffer to get the size of.
+    /// @return The size of the buffer in bytes.
+    size_t (*size)(struct ksnp_buffer *buffer) NOEXCEPT;
+
+    /// @brief Pointer to a function that consumes the first @p count bytes from
+    /// the buffer.
+    ///
+    /// This function removes data from the front of the buffer.
+    ///
+    /// @param buffer The buffer to consume data from.
+    /// @param count The number of bytes to consume. This value must not exceed
+    /// the @a size member, otherwise the effects are undefined.
+    void (*consume)(struct ksnp_buffer *buffer, size_t count) NOEXCEPT;
+
+    /// @brief Pointer to a function that appends the given data to the buffer.
+    ///
+    /// @param buffer The buffer to append data to.
+    /// @param data Pointer to a buffer containing the data to append.
+    /// @param len Size of the buffer pointed to by @p data.
+    /// @return @ref KSNP_E_NO_ERROR on success.
+    /// @return @ref KSNP_E_NO_MEM if the data cannot be wholly appended.
+    ksnp_error (*append)(struct ksnp_buffer *buffer, unsigned char const *data, size_t len) NOEXCEPT;
+
+    /// @brief Pointer to a function that truncates the buffer.
+    ///
+    /// This function removes data from the back of the buffer.
+    ///
+    /// @param buffer The buffer to truncate.
+    /// @param size Size of the buffer to truncate to. This value must not
+    /// exceed the @a size member, otherwise the effects are undefined.
+    void (*truncate)(struct ksnp_buffer *buffer, size_t size) NOEXCEPT;
+};
+
+/**
  * @struct ksnp_message_context
  * @brief A type for serializing and deserializing protocol messages.
  *
@@ -64,6 +121,29 @@ struct ksnp_message_context;
  * @return Any of the values from the @ref ksnp_error enum on failure.
  */
 ksnp_error ksnp_message_context_create(struct ksnp_message_context **context) NOEXCEPT;
+
+/**
+ * @brief Create a new message context that can be used to serialize and
+ * deserialize messages using custom buffers.
+ *
+ * The message context will read and write data using the provided buffer
+ * objects. The caller may modify these buffers either directly, or using
+ * ksnp_message_context_read_data() or ksnp_message_context_write_data().
+ *
+ * @param context [out] Pointer to a buffer to store the created message context
+ * pointer. This pointer must later be freed using @ref
+ * ksnp_message_context_destroy(). On error, NULL is written instead.
+ * @param read_buffer Pointer to a buffer object that is used for reading data.
+ * Note that data returned by the created message context may refer to data in
+ * the read buffer. Premature modification of that buffer may invalidate this
+ * data.
+ * @param write_buffer Pointer to a buffer object that is used for writing data.
+ * @return @ref KSNP_E_NO_ERROR on success.
+ * @return Any of the values from the @ref ksnp_error enum on failure.
+ */
+ksnp_error ksnp_message_context_create_with_buffer(struct ksnp_message_context **context,
+                                                   struct ksnp_buffer           *read_buffer,
+                                                   struct ksnp_buffer           *write_buffer) NOEXCEPT;
 
 /**
  * @brief Destroy a previously created message context.
@@ -163,8 +243,8 @@ NODISCARD ksnp_error ksnp_message_context_write_data(struct ksnp_message_context
  *
  * The resulting message data is valid only until the next call to
  * @ref ksnp_message_context_next_message(), a call to @ref
- * ksnp_message_context_read_data(), or a call to
- * @ref ksnp_message_context_destroy().
+ * ksnp_message_context_read_data(), a call to
+ * @ref ksnp_message_context_destroy(), or the underlying buffer is modified.
  *
  * @param ctx The message context containing the message data.
  * @param msg [out] Pointer where the address of the last decoded message is

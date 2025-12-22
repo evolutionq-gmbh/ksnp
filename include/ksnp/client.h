@@ -295,17 +295,31 @@ NODISCARD ksnp_error ksnp_client_read_data(struct ksnp_client *client, uint8_t c
  * @brief Check if the client has data available to write.
  *
  * This function can be used to determine of the client has any data available
- * to send to the server, which can be read using @ref ksnp_client_write_data().
- * Data normally becomes available during the initial handshake, after
- * processing input data, or after performing some stream operation.
+ * to send to the server, which can be read using @ref ksnp_client_write_data()
+ * or be made available using @ref ksnp_client_flush_data(). Data normally
+ * becomes available during the initial handshake, after processing input data,
+ * or after performing some stream operation.
  *
  * @param client The client that is checked.
  * @return true if data is available for writing, and @ref
- * ksnp_client_write_data() should be called as soon as the connection with the
- * server is willing to accept it.
+ * ksnp_client_write_data() or @ref ksnp_client_flush_data() should be called as
+ * soon as the connection with the server is willing to accept it.
  * @return false if no data is available to be written.
  */
 bool ksnp_client_want_write(struct ksnp_client const *client) NOEXCEPT;
+
+/**
+ * @brief Flush pending data to the write buffer.
+ *
+ * This function can be used to flush data that should be written to the server
+ * to the write buffer, without having to call @ref ksnp_client_write_data().
+ * This is necessary when using a message context with custom buffers.
+ *
+ * @param client The client to flush pending data for.
+ * @return @ref KSNP_E_NO_ERROR on success.
+ * @return Any of the values from the @ref ksnp_error enum on failure.
+ */
+NODISCARD ksnp_error ksnp_client_flush_data(struct ksnp_client *client) NOEXCEPT;
 
 /**
  * @brief Receive data from the client to send to the server.
@@ -344,7 +358,8 @@ NODISCARD ksnp_error ksnp_client_write_data(struct ksnp_client *client, uint8_t 
  * been read or written.
  *
  * The data in the resulting event is valid only until the next call to this
- * function, @ref ksnp_client_read_data() or @ref ksnp_client_destroy().
+ * function, @ref ksnp_client_read_data(), @ref ksnp_client_destroy() or when
+ * the underlying buffer of the message context is modified.
  *
  * Calling this function may result in output data being generated, which can be
  * tested for using @ref ksnp_client_want_write().

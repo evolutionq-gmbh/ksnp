@@ -41,6 +41,8 @@ public:
 
     [[nodiscard]] auto want_write() const noexcept -> bool;
 
+    void flush_data();
+
     [[nodiscard]] auto write_data(std::span<uint8_t> data) -> size_t;
 
     [[nodiscard]] auto next_event() -> std::optional<ksnp::client_event>;

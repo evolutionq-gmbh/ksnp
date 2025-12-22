@@ -208,6 +208,8 @@ concept IoProcessor =
 
         { impl.read_data(cdata) } -> std::convertible_to<size_t>;
 
+        { impl.flush_data() } -> std::same_as<void>;
+
         { impl.write_data(data) } -> std::convertible_to<size_t>;
 
         { impl.next_event() } -> std::same_as<typename T::result_type>;
@@ -226,6 +228,11 @@ public:
     message_context_t() : unique_obj(nullptr)
     {
         check_error(ksnp_message_context_create(&this->get()));
+    }
+
+    message_context_t(ksnp_buffer *read_buffer, ksnp_buffer *write_buffer) : unique_obj(nullptr)
+    {
+        check_error(ksnp_message_context_create_with_buffer(&this->get(), read_buffer, write_buffer));
     }
 
     auto want_read() -> bool
@@ -303,6 +310,11 @@ public:
         return len;
     }
 
+    void flush_data()
+    {
+        check_error(::ksnp_client_flush_data(**this));
+    }
+
     auto write_data(std::span<unsigned char> data) -> size_t
     {
         size_t len = data.size();
@@ -368,6 +380,11 @@ public:
         size_t len = data.size();
         check_error(::ksnp_server_read_data(**this, data.data(), &len));
         return len;
+    }
+
+    void flush_data()
+    {
+        check_error(::ksnp_server_flush_data(**this));
     }
 
     auto write_data(std::span<unsigned char> data) -> size_t

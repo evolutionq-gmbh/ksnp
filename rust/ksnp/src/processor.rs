@@ -1,8 +1,11 @@
 use core::mem::MaybeUninit;
 
-use crate::sys::ksnp_error;
+use crate::{
+    message::{BufferImpl, MessageContext},
+    sys::ksnp_error,
+};
 
-/// Trait for data processor types found in the etsi-protocol library.
+/// Trait for data processor types found in the KSNP library.
 ///
 /// Types implementing this trait are able to receive and generate raw data to
 /// be handed off for some I/O handling, and can generate values based on
@@ -13,6 +16,62 @@ pub trait Processor {
     where
         Self: 'a;
 
+    /// Gets a reference to the message context used by this processor.
+    fn message_context(&self) -> &MessageContext;
+
+    /// Gets a mutable reference to the message context used by this processor.
+    fn message_context_mut(&mut self) -> &mut MessageContext;
+
+    /// Gets a reference to the read buffer used by the message context of this
+    /// processor.
+    ///
+    /// If no read buffer was specified when the message processor was created,
+    /// or it is of a different type, returns None.
+    fn read_buf<T: BufferImpl>(&self) -> Option<&T> {
+        self.message_context()
+            .read_buf()
+            .and_then(|b| (b as &dyn core::any::Any).downcast_ref())
+    }
+
+    /// Gets a mutable reference to the read buffer used by the message context
+    /// of this processor.
+    ///
+    /// If no read buffer was specified when the message processor was created,
+    /// or it is of a different type, returns None.
+    fn read_buf_mut<T: BufferImpl>(&mut self) -> Option<&mut T> {
+        self.message_context_mut()
+            .read_buf_mut()
+            .and_then(|b| (b as &mut dyn core::any::Any).downcast_mut())
+    }
+
+    /// Gets a reference to the write buffer used by the message context of this
+    /// processor.
+    ///
+    /// Note that [`Processor::flush_data`] must be called before using the
+    /// write buffer to ensure all data to write is flushed to the buffer.
+    ///
+    /// If no write buffer was specified when the message processor was created,
+    /// or it is of a different type, returns None.
+    fn write_buf<T: BufferImpl>(&self) -> Option<&T> {
+        self.message_context()
+            .write_buf()
+            .and_then(|b| (b as &dyn core::any::Any).downcast_ref())
+    }
+
+    /// Gets a mutable reference to the write buffer used by the message context
+    /// of this processor.
+    ///
+    /// Note that [`Processor::flush_data`] must be called before using the
+    /// write buffer to ensure all data to write is flushed to the buffer.
+    ///
+    /// If no write buffer was specified when the message processor was created,
+    /// or it is of a different type, returns None.
+    fn write_buf_mut<T: BufferImpl>(&mut self) -> Option<&mut T> {
+        self.message_context_mut()
+            .write_buf_mut()
+            .and_then(|b| (b as &mut dyn core::any::Any).downcast_mut())
+    }
+
     /// Returns true iff more data is required for further processing.
     fn want_read(&self) -> bool;
 
@@ -21,9 +80,12 @@ pub trait Processor {
 
     /// Reads ingress data.
     ///
-    /// Returns the number of bytes read. [`Processor::process_data`] should be
+    /// Returns the number of bytes read. [`Processor::next_event`] should be
     /// called as soon as possible.
     fn read_data(&mut self, data: &[u8]) -> Result<usize, ksnp_error>;
+
+    /// Flushes pending data to the write buffer.
+    fn flush_data(&mut self) -> Result<(), ksnp_error>;
 
     /// Writes egress data into the provided buffer.
     ///

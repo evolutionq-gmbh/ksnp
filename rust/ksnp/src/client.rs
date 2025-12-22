@@ -93,6 +93,14 @@ impl Processor for ClientConnection {
     where
         Self: 'a;
 
+    fn message_context(&self) -> &MessageContext {
+        &self.ctx
+    }
+
+    fn message_context_mut(&mut self) -> &mut MessageContext {
+        &mut self.ctx
+    }
+
     fn want_read(&self) -> bool {
         // SAFETY: self.client is valid for the lifetime of this wrapper.
         unsafe { sys::ksnp_client_want_read(self.client) }
@@ -110,6 +118,11 @@ impl Processor for ClientConnection {
         // initialized properly.
         map_err(unsafe { sys::ksnp_client_read_data(self.client, data.as_ptr(), &raw mut len) })?;
         Ok(len)
+    }
+
+    fn flush_data(&mut self) -> Result<(), ksnp_error> {
+        // SAFETY: self.client is valid for the lifetime of this wrapper.
+        map_err(unsafe { sys::ksnp_client_flush_data(self.client) })
     }
 
     fn write_data(&mut self, data: &mut [MaybeUninit<u8>]) -> Result<usize, ksnp_error> {

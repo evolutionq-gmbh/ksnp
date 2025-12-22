@@ -343,17 +343,31 @@ NODISCARD ksnp_error ksnp_server_read_data(struct ksnp_server *server, uint8_t c
  * @brief Check if the server has data available to write.
  *
  * This function can be used to determine of the server has any data available
- * to send to the client, which can be read using @ref ksnp_server_write_data(). Data
- * normally becomes available during the initial handshake, after processing
- * input data, or after performing some stream operation.
+ * to send to the client, which can be read using @ref ksnp_server_write_data()
+ * or be made available using @ref ksnp_client_flush_data(). Data normally
+ * becomes available during the initial handshake, after processing input data,
+ * or after performing some stream operation.
  *
  * @param server The server to check.
  * @return true if data is available for writing, and @ref
- * ksnp_server_write_data() should be called as soon as the connection with the
- * client is willing to accept it.
+ * ksnp_server_write_data() or @ref ksnp_server_flush_data() should be called as
+ * soon as the connection with the client is willing to accept it.
  * @return false if no data is available to be written.
  */
 bool ksnp_server_want_write(struct ksnp_server const *server) NOEXCEPT;
+
+/**
+ * @brief Flush pending data to the write buffer.
+ *
+ * This function can be used to flush data that should be written to the client
+ * to the write buffer, without having to call @ref ksnp_server_write_data().
+ * This is necessary when using a message context with custom buffers.
+ *
+ * @param server The server to flush pending data for.
+ * @return @ref KSNP_E_NO_ERROR on success.
+ * @return Any of the values from the @ref ksnp_error enum on failure.
+ */
+NODISCARD ksnp_error ksnp_server_flush_data(struct ksnp_server *server) NOEXCEPT;
 
 /**
  * @brief Receive data from the server to send to the client.
@@ -392,7 +406,8 @@ NODISCARD ksnp_error ksnp_server_write_data(struct ksnp_server *server, uint8_t 
  * been read or written.
  *
  * The data in the resulting event is valid only until the next call to this
- * function, @ref ksnp_server_read_data() or @ref ksnp_server_destroy().
+ * function, @ref ksnp_server_read_data(), @ref ksnp_server_destroy() or when
+ * the underlying buffer of the message context is modified.
  *
  * Calling this function may result in output data being generated, which can be
  * tested for using @ref ksnp_server_want_write().

@@ -6,9 +6,11 @@
 #include <exception>
 #include <json_object.h>
 #include <netdb.h>
+#include <new>
 #include <optional>
 #include <uuid/uuid.h>
 #include <variant>
+#include <vector>
 
 #include "ksnp/client.h"
 #include "ksnp/messages.h"
@@ -250,6 +252,61 @@ public:
         T res        = this->object;
         this->object = zero_val;
         return res;
+    }
+};
+
+/// @brief Buffer using std::vector as a basis.
+class vector_buffer
+    : protected ksnp_buffer
+    , public std::vector<unsigned char>
+{
+public:
+    vector_buffer()
+        : ksnp_buffer{.data     = data_fn,
+                      .size     = size_fn,
+                      .consume  = consume_fn,
+                      .append   = append_fn,
+                      .truncate = truncate_fn}
+    {}
+
+    auto ksnp_buffer_ptr() -> ksnp_buffer *
+    {
+        return this;
+    }
+
+    using vector::data;
+    using vector::size;
+
+private:
+    static auto data_fn(struct ksnp_buffer *buffer) noexcept -> unsigned char *
+
+    {
+        return static_cast<vector_buffer *>(buffer)->data();
+    }
+
+    static auto size_fn(struct ksnp_buffer *buffer) noexcept -> size_t
+    {
+        return static_cast<vector_buffer *>(buffer)->size();
+    }
+
+    static void consume_fn(struct ksnp_buffer *buffer, size_t count) noexcept
+    {
+        auto *self = static_cast<vector_buffer *>(buffer);
+        self->erase(self->begin(), self->begin() + static_cast<std::vector<unsigned char>::difference_type>(count));
+    }
+
+    static auto append_fn(struct ksnp_buffer *buffer, unsigned char const *data, size_t len) noexcept -> ksnp_error
+    try {
+        auto *self = static_cast<vector_buffer *>(buffer);
+        std::copy_n(data, len, std::back_inserter(*self));
+        return ksnp_error::KSNP_E_NO_ERROR;
+    } catch (std::bad_alloc const &) {
+        return ksnp_error::KSNP_E_NO_MEM;
+    }
+
+    static void truncate_fn(struct ksnp_buffer *buffer, size_t size) noexcept
+    {
+        static_cast<vector_buffer *>(buffer)->resize(size);
     }
 };
 

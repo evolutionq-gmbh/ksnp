@@ -58,21 +58,15 @@ auto ksnp_server::want_write() const noexcept -> bool
                 && this->current_stream->has_chunk_available(*this->current_stream)));
 }
 
-auto ksnp_server::write_data(std::span<uint8_t> data) -> size_t
+void ksnp_server::flush_data()
 {
-    auto len = data.size();
-    if (auto res = ::ksnp_message_context_write_data(this->connection, data.data(), &len);
-        res != ksnp_error::KSNP_E_NO_ERROR) {
-        throw ksnp::exception(res);
-    }
-    auto remaining_data = data.subspan(len);
-    if (this->current_stream && remaining_data.size() > (this->current_stream->chunk_size + KSNP_MSG_HEADER_SIZE)
-        && !::ksnp_message_context_want_write(this->connection)
+    if (!::ksnp_message_context_want_write(this->connection) && this->current_stream
         && this->client_capacity >= this->current_stream->chunk_size
         && this->current_stream->has_chunk_available(*this->current_stream)) {
-        auto available = std::min(remaining_data.size(), KSNP_MAX_MSG_LEN) - KSNP_MSG_HEADER_SIZE;
+        auto constexpr max_key_data = static_cast<uint16_t>(KSNP_MAX_MSG_LEN - KSNP_MSG_HEADER_SIZE);
+
         auto max_count =
-            std::min(static_cast<uint32_t>(available), this->client_capacity) / this->current_stream->chunk_size;
+            std::min(static_cast<uint32_t>(max_key_data), this->client_capacity) / this->current_stream->chunk_size;
         ::ksnp_data chunk_data = {};
         if (auto res =
                 this->current_stream->next_chunk(*this->current_stream, &chunk_data, static_cast<uint16_t>(max_count));
@@ -86,12 +80,17 @@ auto ksnp_server::write_data(std::span<uint8_t> data) -> size_t
             this->push_message(ksnp_msg_key_data_notify{.key_data = chunk_data, .parameters = nullptr});
             this->client_capacity -= chunk_data.len;
         }
-        auto remaining_len = remaining_data.size();
-        if (auto res = ::ksnp_message_context_write_data(this->connection, remaining_data.data(), &remaining_len);
-            res != ksnp_error::KSNP_E_NO_ERROR) {
-            throw ksnp::exception(res);
-        }
-        len += remaining_len;
+    }
+}
+
+auto ksnp_server::write_data(std::span<uint8_t> data) -> size_t
+{
+    this->flush_data();
+
+    auto len = data.size();
+    if (auto res = ::ksnp_message_context_write_data(this->connection, data.data(), &len);
+        res != ksnp_error::KSNP_E_NO_ERROR) {
+        throw ksnp::exception(res);
     }
     return len;
 }
@@ -543,6 +542,13 @@ auto ksnp_server_want_write(struct ksnp_server const *server) noexcept -> bool
 {
     return server->want_write();
 }
+
+auto ksnp_server_flush_data(struct ksnp_server *server) noexcept -> ksnp_error
+try {
+    server->flush_data();
+    return ksnp_error::KSNP_E_NO_ERROR;
+}
+CATCH_ALL
 
 auto ksnp_server_write_data(struct ksnp_server *server, uint8_t *data, size_t *len) noexcept -> ksnp_error
 {

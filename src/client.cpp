@@ -48,8 +48,15 @@ auto ksnp_client::want_write() const noexcept -> bool
     return ::ksnp_message_context_want_write(this->connection);
 }
 
+void ksnp_client::flush_data()
+{
+    // Nothing to do
+}
+
 auto ksnp_client::write_data(std::span<uint8_t> data) -> size_t
 {
+    this->flush_data();
+
     auto len = data.size();
     if (auto res = ::ksnp_message_context_write_data(this->connection, data.data(), &len);
         res != ksnp_error::KSNP_E_NO_ERROR) {
@@ -384,6 +391,13 @@ auto ksnp_client_want_write(struct ksnp_client const *client) noexcept -> bool
 {
     return client->want_write();
 }
+
+auto ksnp_client_flush_data(struct ksnp_client *client) noexcept -> ksnp_error
+try {
+    client->flush_data();
+    return ksnp_error::KSNP_E_NO_ERROR;
+}
+CATCH_ALL
 
 auto ksnp_client_write_data(struct ksnp_client *client, uint8_t *data, size_t *len) noexcept -> ksnp_error
 try {

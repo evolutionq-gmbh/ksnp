@@ -107,6 +107,8 @@ public:
 
     [[nodiscard]] auto want_write() const noexcept -> bool;
 
+    void flush_data();
+
     [[nodiscard]] auto write_data(std::span<uint8_t> data) -> size_t;
 
     void open_stream_ok(::ksnp_stream *stream, struct ksnp_stream_accepted_params const *params);

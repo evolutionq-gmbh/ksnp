@@ -3,9 +3,8 @@
 #include <climits>
 #include <compare>
 #include <concepts>
+#include <cstddef>
 #include <cstdint>
-#include <cstring>
-#include <deque>
 #include <iterator>
 #include <limits>
 #include <optional>
@@ -30,6 +29,87 @@ using namespace ksnp;
 
 namespace
 {
+
+/// @brief Wrapper for ksnp_buffer that makes it act as a Container.
+struct buffer {
+private:
+    ksnp_buffer *buf;
+
+public:
+    using element_type    = unsigned char;
+    using size_type       = size_t;
+    using difference_type = std::ptrdiff_t;
+
+    explicit buffer(ksnp_buffer *buf) : buf(buf)
+    {}
+
+    [[nodiscard]] auto data() const noexcept -> unsigned char const *
+    {
+        return this->buf->data(this->buf);
+    }
+
+    [[nodiscard]] auto data() noexcept -> unsigned char *
+    {
+        return this->buf->data(this->buf);
+    }
+
+    [[nodiscard]] auto size() const noexcept -> size_t
+    {
+        return this->buf->size(this->buf);
+    }
+
+    [[nodiscard]] auto empty() const noexcept -> bool
+    {
+        return this->size() == 0;
+    }
+
+    void consume(size_t count) noexcept
+    {
+        this->buf->consume(this->buf, count);
+    }
+
+    void append(unsigned char const *data, size_t len)
+    {
+        if (auto err = this->buf->append(this->buf, data, len); err != ksnp_error::KSNP_E_NO_ERROR) {
+            throw exception(err);
+        }
+    }
+
+    void truncate(size_t count) noexcept
+    {
+        this->buf->truncate(this->buf, count);
+    }
+
+    [[nodiscard]] auto begin() -> unsigned char *
+    {
+        return this->data();
+    }
+
+    [[nodiscard]] auto end() -> unsigned char *
+    {
+        return this->data() + this->size();
+    }
+
+    [[nodiscard]] auto begin() const -> unsigned char const *
+    {
+        return this->data();
+    }
+
+    [[nodiscard]] auto end() const -> unsigned char const *
+    {
+        return this->data() + this->size();
+    }
+
+    [[nodiscard]] auto cbegin() const -> unsigned char const *
+    {
+        return this->data();
+    }
+
+    [[nodiscard]] auto cend() const -> unsigned char const *
+    {
+        return this->data() + this->size();
+    }
+};
 
 class zstring_view : public std::string_view
 {
@@ -434,8 +514,13 @@ struct ksnp_message_context {
 private:
     using qos_lists = std::variant<std::vector<uint16_t>, std::vector<uint32_t>, std::vector<struct ksnp_rate>>;
 
-    std::vector<unsigned char>                 input_data;
-    std::deque<unsigned char>                  output_data;
+    // Storage used when no user-provided buffers are used.
+    std::optional<vector_buffer> input_storage;
+    std::optional<vector_buffer> output_storage;
+
+    buffer input_data;
+    buffer output_data;
+
     std::optional<json_obj_deleter>            parsed_json;
     std::optional<struct ksnp_message>         last_message;
     std::optional<std::string>                 status_message;
@@ -460,10 +545,10 @@ private:
         this->registered_qos_lists.clear();
         auto msg_len_ser = std::span{this->input_data}.subspan<2, sizeof(uint16_t)>();
         auto msg_len     = uint_from_be<uint16_t>(msg_len_ser);
-        this->input_data.erase(this->input_data.begin(), this->input_data.begin() + msg_len);
+        this->input_data.consume(msg_len);
     }
 
-    auto load_next_string(std::span<uint8_t> &data) -> char const *
+    auto load_next_string(std::span<uint8_t const> &data) -> char const *
     {
         if (data.empty()) {
             this->status_message = std::nullopt;
@@ -474,7 +559,7 @@ private:
         return this->status_message->c_str();
     }
 
-    auto load_next_json(std::span<uint8_t> &data, size_t json_len) -> json_object *
+    auto load_next_json(std::span<uint8_t const> &data, size_t json_len) -> json_object *
     {
         this->parsed_json.reset();
 
@@ -491,8 +576,8 @@ private:
         // exception.
         unique_obj<json_tokener *, json_tokener_free> tok(json_tokener_new());
 
-        auto *data_ptr = data.data();
-        auto *obj =
+        auto const *data_ptr = data.data();
+        auto       *obj =
             json_tokener_parse_ex(tok.get(), reinterpret_cast<char const *>(data_ptr), static_cast<int>(json_len));
         if (obj == nullptr) {
             this->status_message = json_tokener_error_desc(json_tokener_get_error(tok.get()));
@@ -530,7 +615,7 @@ private:
     void write_uint(T val)
     {
         auto bytes = uint_to_be(val);
-        std::ranges::copy(bytes, std::back_inserter(this->output_data));
+        this->output_data.append(bytes.data(), bytes.size());
     }
 
     void write_u16(uint16_t val)
@@ -560,7 +645,7 @@ private:
         if (flag == json_ser_flag::with_length) {
             this->write_u16(static_cast<uint16_t>(json_len));
         }
-        this->output_data.insert(this->output_data.end(), json.begin(), json.end());
+        this->output_data.append(reinterpret_cast<unsigned char const *>(json.data()), json.size());
     }
 
     void write_message(char const *msg)
@@ -569,7 +654,7 @@ private:
             return;
         }
         std::string_view msg_view(msg);
-        this->output_data.insert(this->output_data.end(), msg_view.begin(), msg_view.end());
+        this->output_data.append(reinterpret_cast<unsigned char const *>(msg_view.data()), msg_view.size());
     }
 
     void write_parameters(ksnp_stream_open_params const *params)
@@ -836,7 +921,19 @@ private:
     }
 
 public:
-    ksnp_message_context() : eof(false)
+    ksnp_message_context()
+        : input_storage(vector_buffer())
+        , output_storage(vector_buffer())
+        , input_data(this->input_storage->ksnp_buffer_ptr())
+        , output_data(this->output_storage->ksnp_buffer_ptr())
+        , eof(false)
+    {}
+
+    ksnp_message_context(ksnp_buffer *read_buffer,  // NOLINT: bugprone-easily-swappable-parameters
+                         ksnp_buffer *write_buffer)
+        : input_data(read_buffer)
+        , output_data(write_buffer)
+        , eof(false)
     {}
 
     [[nodiscard]] auto want_read() const noexcept -> bool
@@ -874,7 +971,7 @@ public:
             return ksnp_error::KSNP_E_NO_ERROR;
         }
 
-        this->input_data.insert(this->input_data.end(), data.begin(), data.end());
+        this->input_data.append(data.data(), data.size());
         *read = data.size();
         return ksnp_error::KSNP_E_NO_ERROR;
     }
@@ -890,7 +987,7 @@ public:
             static_cast<decltype(this->output_data)::difference_type>(std::min(this->output_data.size(), data.size()));
 
         std::copy_n(this->output_data.begin(), to_copy, data.begin());
-        this->output_data.erase(this->output_data.begin(), this->output_data.begin() + to_copy);
+        this->output_data.consume(to_copy);
         return static_cast<size_t>(to_copy);
     }
 
@@ -924,7 +1021,7 @@ public:
         if (this->eof && !data.empty()) {
             // Receiving channel has been closed, but incomplete message data
             // is still in the buffer.
-            this->input_data.clear();
+            this->input_data.truncate(0);
             if (protocol_error != nullptr) {
                 *protocol_error =
                     ksnp_protocol_error{.code = ksnp_error_code::KSNP_PROT_E_INCOMPLETE_MSG, .description = nullptr};
@@ -939,7 +1036,7 @@ public:
         return ksnp_error::KSNP_E_PROTOCOL_ERROR;
     }
 
-    auto parse_message(uint16_t type, std::span<uint8_t> data) -> ksnp_error
+    auto parse_message(uint16_t type, std::span<uint8_t const> data) -> ksnp_error
     {
         // Partially initialize a message
         ksnp_message msg = {.type = static_cast<ksnp_message_type>(type), .error = {.code = {}}};
@@ -1076,7 +1173,9 @@ public:
         return ksnp_error::KSNP_E_NO_ERROR;
     }
 
-    auto write_message(struct ksnp_message const *msg) -> ksnp_error
+    auto write_message(struct ksnp_message const *msg)  // NOLINT: readability-function-cognitive-complexity
+        -> ksnp_error
+
     {
         assert(msg != nullptr);
         auto orig_out_len = this->output_data.size();
@@ -1144,9 +1243,8 @@ public:
                 write_u32(msg->suspend_stream_reply.timeout);
                 break;
             case ksnp_message_type::KSNP_MSG_KEEP_ALIVE_STREAM:
-                this->output_data.insert(this->output_data.end(),
-                                         std::begin(msg->keep_alive_stream.key_stream_id),
-                                         std::end(msg->keep_alive_stream.key_stream_id));
+                this->output_data.append(std::begin(msg->keep_alive_stream.key_stream_id),
+                                         sizeof(msg->keep_alive_stream.key_stream_id));
                 break;
             case ksnp_message_type::KSNP_MSG_KEEP_ALIVE_STREAM_REPLY:
                 if (msg->keep_alive_stream_reply.code == ksnp_status_code::KSNP_STATUS_SUCCESS
@@ -1162,7 +1260,7 @@ public:
             case ksnp_message_type::KSNP_MSG_KEY_DATA_NOTIFY: {
                 std::span key_data(msg->key_data_notify.key_data.data, msg->key_data_notify.key_data.len);
                 write_u16(static_cast<uint16_t>(key_data.size()));
-                this->output_data.insert(this->output_data.end(), key_data.begin(), key_data.end());
+                this->output_data.append(key_data.data(), key_data.size());
                 if (msg->key_data_notify.parameters != nullptr) {
                     write_json(msg->key_data_notify.parameters, json_ser_flag::plain);
                 }
@@ -1178,12 +1276,11 @@ public:
                 throw ksnp::exception(ksnp_error::KSNP_E_SER_MSG_TOO_LARGE);
             }
             // Overwrite the placeholder in the output queue by the message length.
-            auto len_it = this->output_data.begin()
-                        + static_cast<decltype(this->output_data)::difference_type>(orig_out_len) + sizeof(uint16_t);
-            std::ranges::copy(uint_to_be(static_cast<uint16_t>(msg_len)), len_it);
+            std::ranges::copy(uint_to_be(static_cast<uint16_t>(msg_len)),
+                              this->output_data.data() + orig_out_len + sizeof(uint16_t));
         } catch (...) {
             // Erase data inserted into output queue, if any, then rethrow.
-            this->output_data.resize(orig_out_len);
+            this->output_data.truncate(orig_out_len);
             throw;
         }
 
@@ -1195,6 +1292,16 @@ auto ksnp_message_context_create(struct ksnp_message_context **context) noexcept
 try {
     *context = nullptr;
     *context = new ksnp_message_context();
+    return ksnp_error::KSNP_E_NO_ERROR;
+}
+CATCH_ALL
+
+auto ksnp_message_context_create_with_buffer(struct ksnp_message_context **context,
+                                             struct ksnp_buffer           *read_buffer,
+                                             struct ksnp_buffer           *write_buffer) noexcept -> ksnp_error
+try {
+    *context = nullptr;
+    *context = new ksnp_message_context(read_buffer, write_buffer);
     return ksnp_error::KSNP_E_NO_ERROR;
 }
 CATCH_ALL
