@@ -1,8 +1,6 @@
 // Empty C file to ensure the headers are conform C.
 
-// NOLINTBEGIN(unused-includes)
-#include "ksnp/client.h"
-#include "ksnp/serde.h"
-#include "ksnp/server.h"
-#include "ksnp/types.h"
-// NOLINTEND(unused-includes)
+#include "ksnp/client.h"  // IWYU pragma: keep
+#include "ksnp/serde.h"   // IWYU pragma: keep
+#include "ksnp/server.h"  // IWYU pragma: keep
+#include "ksnp/types.h"   // IWYU pragma: keep

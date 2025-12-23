@@ -1,4 +1,3 @@
-
 #include <array>
 #include <cstddef>
 #include <cstring>
@@ -177,13 +176,14 @@ namespace
 
 ksnp::zstring_view const test_string = "abcdefghijkl"_zsv;
 
-json_obj test_extension{[] {
-    auto obj = json_object_new_object();
-    json_object_object_add(obj, "myval", json_object_new_int(42));
+json_obj const test_extension{[]() noexcept -> struct json_object * {  // NOLINT cert-err58-cpp
+    static constexpr int magic_val = 42;
+    auto                *obj       = json_object_new_object();
+    json_object_object_add(obj, "myval", json_object_new_int(magic_val));
     return obj;
 }()};
 
-ksnp_stream_open_params req_params{
+ksnp_stream_open_params const req_params{
     .stream_id           = {},
     .source              = {.sae = nullptr, .network = "source-net"},
     .destination         = {.sae = "target SAE", .network = nullptr},
@@ -197,7 +197,7 @@ ksnp_stream_open_params req_params{
     .required_extensions = *test_extension,
 };
 
-ksnp_stream_open_params req_params_minimal{
+ksnp_stream_open_params const req_params_minimal{
     .stream_id           = {},
     .source              = {.sae = nullptr, .network = nullptr},
     .destination         = {.sae = "target SAE", .network = nullptr},
@@ -211,7 +211,7 @@ ksnp_stream_open_params req_params_minimal{
     .required_extensions = nullptr,
 };
 
-ksnp_stream_accepted_params acc_params{
+ksnp_stream_accepted_params const acc_params{
     .stream_id      = {},
     .chunk_size     = 0,
     .position       = 0,
@@ -221,19 +221,19 @@ ksnp_stream_accepted_params acc_params{
     .extensions     = *test_extension,
 };
 
-uint16_t supported_chunk_sizes[] = {8, 16, 32, 17};
+std::array<uint16_t, 4> const supported_chunk_sizes = {8, 16, 32, 17};
 
-ksnp_stream_qos_params qos_params{
+ksnp_stream_qos_params const qos_params{
     .chunk_size     = {.type = ksnp_qos_type::KSNP_QOS_LIST,
-                       .list = {.values = supported_chunk_sizes, .count = std::size(supported_chunk_sizes)}  },
+                       .list = {.values = supported_chunk_sizes.data(), .count = std::size(supported_chunk_sizes)}},
     .min_bps        = {.type  = ksnp_qos_type::KSNP_QOS_RANGE,
-                       .range = {.min = {.bits = 4, .seconds = 5}, .max = {.bits = 256 * 1024, .seconds = 0}}},
-    .ttl            = {.type = ksnp_qos_type::KSNP_QOS_NONE,   .none = 0                                     },
-    .provision_size = {.type = ksnp_qos_type::KSNP_QOS_NULL,   .none = 0                                     },
+                       .range = {.min = {.bits = 4, .seconds = 5}, .max = {.bits = 256 * 1024, .seconds = 0}}     },
+    .ttl            = {.type = ksnp_qos_type::KSNP_QOS_NONE,   .none = 0                                          },
+    .provision_size = {.type = ksnp_qos_type::KSNP_QOS_NULL,   .none = 0                                          },
     .extensions     = nullptr,
 };
 
-ksnp::message_t const good_messages[] = {
+std::array<ksnp::message_t, 20> const good_messages = {
     ksnp_msg_error{.code = ksnp_error_code{0xFFFF0000}},
     ksnp_msg_version{.minimum_version = ksnp_protocol_version::PROTOCOL_V1,
                    .maximum_version = ksnp_protocol_version::PROTOCOL_V1},
@@ -271,7 +271,7 @@ ksnp::message_t const good_messages[] = {
                    .parameters = *test_extension},
 };
 
-ksnp_stream_open_params req_params_bad_dest{
+ksnp_stream_open_params const req_params_bad_dest{
     .stream_id           = {},
     .source              = {.sae = nullptr, .network = nullptr},
     .destination         = {.sae = nullptr, .network = nullptr},
@@ -285,7 +285,7 @@ ksnp_stream_open_params req_params_bad_dest{
     .required_extensions = nullptr,
 };
 
-ksnp_stream_open_params req_params_bad_prov_chunk{
+ksnp_stream_open_params const req_params_bad_prov_chunk{
     .stream_id           = {},
     .source              = {.sae = nullptr, .network = nullptr},
     .destination         = {.sae = "target SAE", .network = nullptr},
@@ -299,7 +299,7 @@ ksnp_stream_open_params req_params_bad_prov_chunk{
     .required_extensions = nullptr,
 };
 
-ksnp_stream_accepted_params acc_params_missing_bps{
+ksnp_stream_accepted_params const acc_params_missing_bps{
     .stream_id      = {},
     .chunk_size     = 0,
     .position       = 0,
@@ -309,7 +309,7 @@ ksnp_stream_accepted_params acc_params_missing_bps{
     .extensions     = *test_extension,
 };
 
-ksnp_stream_accepted_params acc_params_bad_chunk_size{
+ksnp_stream_accepted_params const acc_params_bad_chunk_size{
     .stream_id      = {},
     .chunk_size     = 0x8001,
     .position       = 0,
@@ -319,7 +319,7 @@ ksnp_stream_accepted_params acc_params_bad_chunk_size{
     .extensions     = *test_extension,
 };
 
-ksnp_stream_accepted_params acc_params_bad_prov_chunk{
+ksnp_stream_accepted_params const acc_params_bad_prov_chunk{
     .stream_id      = {},
     .chunk_size     = 7,
     .position       = 0,
@@ -329,7 +329,7 @@ ksnp_stream_accepted_params acc_params_bad_prov_chunk{
     .extensions     = *test_extension,
 };
 
-ksnp_stream_qos_params qos_params_bad_int_range{
+ksnp_stream_qos_params const qos_params_bad_int_range{
     .chunk_size     = {.type = ksnp_qos_type::KSNP_QOS_RANGE, .range = {.min = 0xEB, .max = 0xEA}},
     .min_bps        = {.type = ksnp_qos_type::KSNP_QOS_NONE,  .none = 0                          },
     .ttl            = {.type = ksnp_qos_type::KSNP_QOS_NONE,  .none = 0                          },
@@ -337,7 +337,7 @@ ksnp_stream_qos_params qos_params_bad_int_range{
     .extensions     = nullptr,
 };
 
-ksnp_stream_qos_params qos_params_bad_rate_range{
+ksnp_stream_qos_params const qos_params_bad_rate_range{
     .chunk_size     = {.type = ksnp_qos_type::KSNP_QOS_NONE,   .none = 0                            },
     .min_bps        = {.type  = ksnp_qos_type::KSNP_QOS_RANGE,
                        .range = {.min = {.bits = 2, .seconds = 0}, .max = {.bits = 3, .seconds = 2}}},
@@ -346,7 +346,7 @@ ksnp_stream_qos_params qos_params_bad_rate_range{
     .extensions     = nullptr,
 };
 
-ksnp_stream_qos_params qos_params_bad_chunk_range{
+ksnp_stream_qos_params const qos_params_bad_chunk_range{
     .chunk_size     = {.type = ksnp_qos_type::KSNP_QOS_RANGE, .range = {.min = 16, .max = 0x8001}},
     .min_bps        = {.type = ksnp_qos_type::KSNP_QOS_NONE,  .none = 0                          },
     .ttl            = {.type = ksnp_qos_type::KSNP_QOS_NONE,  .none = 0                          },
@@ -354,18 +354,18 @@ ksnp_stream_qos_params qos_params_bad_chunk_range{
     .extensions     = nullptr,
 };
 
-uint16_t supported_chunk_sizes_bad[] = {8, 16, 32, 17, 0x7FF, 0xF000, 511, 64};
+std::array<uint16_t, 8> const supported_chunk_sizes_bad = {8, 16, 32, 17, 0x7FF, 0xF000, 511, 64};
 
-ksnp_stream_qos_params qos_params_bad_chunk_list{
+ksnp_stream_qos_params const qos_params_bad_chunk_list{
     .chunk_size     = {.type = ksnp_qos_type::KSNP_QOS_LIST,
-                       .list = {.values = supported_chunk_sizes_bad, .count = std::size(supported_chunk_sizes_bad)}},
-    .min_bps        = {.type = ksnp_qos_type::KSNP_QOS_NONE, .none = 0                                             },
-    .ttl            = {.type = ksnp_qos_type::KSNP_QOS_NONE, .none = 0                                             },
-    .provision_size = {.type = ksnp_qos_type::KSNP_QOS_NONE, .none = 0                                             },
+                       .list = {.values = supported_chunk_sizes_bad.data(), .count = std::size(supported_chunk_sizes_bad)}},
+    .min_bps        = {.type = ksnp_qos_type::KSNP_QOS_NONE, .none = 0                                                    },
+    .ttl            = {.type = ksnp_qos_type::KSNP_QOS_NONE, .none = 0                                                    },
+    .provision_size = {.type = ksnp_qos_type::KSNP_QOS_NONE, .none = 0                                                    },
     .extensions     = nullptr,
 };
 
-ksnp::message_t const bad_messages_rt[] = {
+std::array<ksnp::message_t, 10> const bad_messages_rt = {
     ksnp_msg_version{.minimum_version = static_cast<ksnp_protocol_version>(2),
                      .maximum_version = ksnp_protocol_version::PROTOCOL_V1},
     ksnp_msg_version{.minimum_version = static_cast<ksnp_protocol_version>(0xFF),
@@ -392,9 +392,9 @@ ksnp::message_t const bad_messages_rt[] = {
                      .message    = nullptr},
 };
 
-std::string const large_string(0xFFFF, '*');
+std::string const large_string(0xFFFF, '*');  // NOLINT cert-err58-cpp
 
-ksnp_stream_open_params req_params_too_large{
+ksnp_stream_open_params const req_params_too_large{
     .stream_id           = {},
     .source              = {.sae = nullptr, .network = nullptr},
     .destination         = {.sae = large_string.c_str(), .network = nullptr},
@@ -408,7 +408,7 @@ ksnp_stream_open_params req_params_too_large{
     .required_extensions = nullptr,
 };
 
-ksnp::message_t const bad_messages_ser[] = {
+std::array<ksnp::message_t, 7> const bad_messages_ser = {
     ksnp_msg_open_stream{.parameters = nullptr},
     ksnp_msg_open_stream{.parameters = &req_params_too_large},
     ksnp_msg_open_stream_reply{.code       = ksnp_status_code::KSNP_STATUS_SUCCESS,
@@ -424,7 +424,7 @@ ksnp::message_t const bad_messages_ser[] = {
     ksnp_msg_keep_alive_stream_reply{.code = ksnp_status_code::KSNP_STATUS_SUCCESS, .message = test_string.c_str()},
 };
 
-const_data const bad_parser_input[] = {
+std::array<const_data, 46> const bad_parser_input = {
     // Invalid message size: smaller than header size
     "\x00\x00\x00\x03"_cdat,
     // Error message too short

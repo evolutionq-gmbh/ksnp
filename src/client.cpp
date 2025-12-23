@@ -209,7 +209,7 @@ auto ksnp_client::process_message(ksnp_message const &msg)  // NOLINT(readabilit
                                   return std::nullopt;
                               case stream_state::open:
                                   this->push_message(ksnp_msg_suspend_stream{.timeout = msg.timeout});
-                                  // fallthrough
+                                  [[fallthrough]];
                               case stream_state::suspending:
                                   this->stream_state = stream_state::closed;
                                   return ::ksnp_client_event_stream_suspend{

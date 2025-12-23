@@ -78,8 +78,9 @@ auto inline compare_qos(T const &left, T const &right) -> bool
     }
     case ksnp_qos_type::KSNP_QOS_RANGE:
         return left.range.min == right.range.min && left.range.max == right.range.max;
+    default:
+        return false;
     }
-    return false;
 }
 
 template<typename T>
@@ -376,48 +377,48 @@ public:
     }
 };
 
-namespace
-{
-char constexpr sep[] = ", ";
-}
 template<>
 struct std::formatter<ksnp_status_code> : public enum_formatter<ksnp_status_code> {};
 template<>
 struct std::formatter<ksnp_error_code> : public enum_formatter<ksnp_error_code> {};
 
+static constexpr char const *sep = ", ";
+
+// NOLINTBEGIN(readability-identifier-length, readability-named-parameter, hicpp-named-parameter)
+
 // Forward output stream operator for generic enums to the output stream
 // operator of uint64_t.
 template<typename Enum>
-inline std::ostream &operator<<(std::ostream &os, Enum const &e)
+inline auto operator<<(std::ostream &os, Enum const &value) -> std::ostream &
 requires std::is_enum_v<Enum> && std::is_integral_v<std::underlying_type_t<Enum>>
 {
-    return os << static_cast<uint64_t>(e);
+    return os << +static_cast<std::underlying_type_t<Enum>>(value);
 }
 
-inline std::ostream &operator<<(std::ostream &os, ksnp_key_stream_id const &ksid)
+inline auto operator<<(std::ostream &os, ksnp_key_stream_id const &ksid) -> std::ostream &
 {
-    for (auto const &x: ksid) {
-        os << std::format("{:02X}", x);
+    for (auto const &byte: ksid) {
+        os << std::format("{:02X}", byte);
     }
     return os;
 }
 
-inline std::ostream &operator<<(std::ostream &os, ksnp_address const &addr)
+inline auto operator<<(std::ostream &os, ksnp_address const &addr) -> std::ostream &
 {
     return os << "{" << addr.sae << sep << addr.network << "}";
 }
 
-inline std::ostream &operator<<(std::ostream &os, ksnp_rate const &rate)
+inline auto operator<<(std::ostream &os, ksnp_rate const &rate) -> std::ostream &
 {
     return os << "{" << rate.bits << sep << rate.seconds << "}";
 }
 
-inline std::ostream &operator<<(std::ostream &os, json_object const *obj)
+inline auto operator<<(std::ostream &os, json_object const *obj) -> std::ostream &
 {
-    return os << (obj ? "{...}" : "null");
+    return os << (obj != nullptr ? "{...}" : "null");
 }
 
-inline std::ostream &operator<<(std::ostream &os, ksnp_data const &data)
+inline auto operator<<(std::ostream &os, ksnp_data const &data) -> std::ostream &
 {
 #ifdef __clang__
 #pragma clang unsafe_buffer_usage begin
@@ -436,21 +437,21 @@ template<typename A, typename B>
 concept same_decay_as = std::same_as<std::decay_t<A>, std::decay_t<B>>;
 
 template<typename Qos>
-concept qos_type = std::is_class_v<Qos> && requires(Qos q) {
-    { q.type } -> same_decay_as<ksnp_qos_type>;
-    { q.none } -> same_decay_as<int>;
-    { q.range.max } -> same_decay_as<decltype(q.range.min)>;
-    { q.list.values } -> same_decay_as<decltype(q.range.min) const *>;
-    { q.list.count } -> same_decay_as<size_t>;
+concept qos_type = std::is_class_v<Qos> && requires(Qos qos) {
+    { qos.type } -> same_decay_as<ksnp_qos_type>;
+    { qos.none } -> same_decay_as<int>;
+    { qos.range.max } -> same_decay_as<decltype(qos.range.min)>;
+    { qos.list.values } -> same_decay_as<decltype(qos.range.min) const *>;
+    { qos.list.count } -> same_decay_as<size_t>;
 };
 
 template<typename T>
-concept ostreamable = requires(std::ostream &os, T const &t) {
-    { os << t } -> std::same_as<std::ostream &>;
+concept ostreamable = requires(std::ostream &os, T const &value) {
+    { os << value } -> std::same_as<std::ostream &>;
 };
 
 template<qos_type Q>
-std::ostream &operator<<(std::ostream &os, Q const &qos)
+auto operator<<(std::ostream &os, Q const &qos) -> std::ostream &
 requires ostreamable<decltype(qos.range.min)>
 {
     switch (qos.type) {
@@ -485,41 +486,43 @@ requires ostreamable<decltype(qos.range.min)>
     }
 }
 
-inline std::ostream &operator<<(std::ostream &os, ksnp_msg_error const &msg)
+inline auto operator<<(std::ostream &os, ksnp_msg_error const &msg) -> std::ostream &
 {
     return os << "ksnp_msg_error{" << msg.code << "}";
 }
 
-inline std::ostream &operator<<(std::ostream &os, ksnp_msg_version const &msg)
+inline auto operator<<(std::ostream &os, ksnp_msg_version const &msg) -> std::ostream &
 {
     return os << "ksnp_msg_version{" << msg.minimum_version << sep << msg.maximum_version << "}";
 }
 
-inline std::ostream &operator<<(std::ostream &os, ksnp_msg_open_stream const &msg)
+inline auto operator<<(std::ostream &os, ksnp_msg_open_stream const &msg) -> std::ostream &
 {
-    if (auto x = msg.parameters) {
-        return os << "ksnp_msg_open_stream{" << x->stream_id << sep << x->source << sep << x->destination << sep
-                  << x->chunk_size << sep << x->capacity << sep << x->min_bps << sep << x->max_bps << sep << x->ttl
-                  << sep << x->provision_size << sep << x->extensions << sep << x->required_extensions << "}";
-    } else {
-        return os << "ksnp_msg_open_stream{null}";
+    if (auto const *open_params = msg.parameters) {
+        return os << "ksnp_msg_open_stream{" << open_params->stream_id << sep << open_params->source << sep
+                  << open_params->destination << sep << open_params->chunk_size << sep << open_params->capacity << sep
+                  << open_params->min_bps << sep << open_params->max_bps << sep << open_params->ttl << sep
+                  << open_params->provision_size << sep << open_params->extensions << sep
+                  << open_params->required_extensions << "}";
     }
+    return os << "ksnp_msg_open_stream{null}";
 }
 
-inline std::ostream &operator<<(std::ostream &os, ksnp_msg_open_stream_reply const &msg)
+inline auto operator<<(std::ostream &os, ksnp_msg_open_stream_reply const &msg) -> std::ostream &
 {
     os << "ksnp_msg_open_stream_reply{0x" << std::format("{:0X}", msg.code) << sep << "{";
     if (msg.code == ksnp_status_code::KSNP_STATUS_SUCCESS) {
-        if (auto x = msg.parameters.reply) {
-            os << x->stream_id << sep << x->chunk_size << sep << x->position << sep << x->max_key_delay << sep
-               << x->min_bps << sep << x->provision_size << sep << x->extensions;
+        if (auto const *reply_params = msg.parameters.reply) {
+            os << reply_params->stream_id << sep << reply_params->chunk_size << sep << reply_params->position << sep
+               << reply_params->max_key_delay << sep << reply_params->min_bps << sep << reply_params->provision_size
+               << sep << reply_params->extensions;
         } else {
             os << "null";
         }
     } else {
-        if (auto x = msg.parameters.qos) {
-            os << x->chunk_size << sep << x->min_bps << sep << x->ttl << sep << x->provision_size << sep
-               << x->extensions;
+        if (auto const *qos = msg.parameters.qos) {
+            os << qos->chunk_size << sep << qos->min_bps << sep << qos->ttl << sep << qos->provision_size << sep
+               << qos->extensions;
         } else {
             os << "null";
         }
@@ -527,65 +530,67 @@ inline std::ostream &operator<<(std::ostream &os, ksnp_msg_open_stream_reply con
     return os << "}}";
 }
 
-inline std::ostream &operator<<(std::ostream &os, ksnp_msg_close_stream const &)
+inline auto operator<<(std::ostream &os, ksnp_msg_close_stream const &) -> std::ostream &
 {
     return os << "ksnp_msg_close_stream{}";
 }
 
-inline std::ostream &operator<<(std::ostream &os, ksnp_msg_close_stream_reply const &)
+inline auto operator<<(std::ostream &os, ksnp_msg_close_stream_reply const &) -> std::ostream &
 {
     return os << "ksnp_msg_close_stream_reply{}";
 }
 
-inline std::ostream &operator<<(std::ostream &os, ksnp_msg_close_stream_notify const &msg)
+inline auto operator<<(std::ostream &os, ksnp_msg_close_stream_notify const &msg) -> std::ostream &
 {
-    return os << "ksnp_msg_close_stream_notify{" << msg.code << sep << (msg.message ? msg.message : "") << "}";
+    return os << "ksnp_msg_close_stream_notify{" << msg.code << sep << (msg.message != nullptr ? msg.message : "")
+              << "}";
 }
 
-inline std::ostream &operator<<(std::ostream &os, ksnp_msg_suspend_stream const &msg)
+inline auto operator<<(std::ostream &os, ksnp_msg_suspend_stream const &msg) -> std::ostream &
 {
     return os << "ksnp_msg_suspend_stream{" << msg.timeout << "}";
 }
 
-inline std::ostream &operator<<(std::ostream &os, ksnp_msg_suspend_stream_reply const &msg)
+inline auto operator<<(std::ostream &os, ksnp_msg_suspend_stream_reply const &msg) -> std::ostream &
 {
     return os << "ksnp_msg_suspend_stream_reply{" << msg.code << sep << msg.timeout << sep
-              << (msg.message ? msg.message : "") << "}";
+              << (msg.message != nullptr ? msg.message : "") << "}";
 }
 
-inline std::ostream &operator<<(std::ostream &os, ksnp_msg_suspend_stream_notify const &msg)
+inline auto operator<<(std::ostream &os, ksnp_msg_suspend_stream_notify const &msg) -> std::ostream &
 {
     return os << "ksnp_msg_suspend_stream_notify{" << msg.code << sep << msg.timeout << "}";
 }
 
-inline std::ostream &operator<<(std::ostream &os, ksnp_msg_keep_alive_stream const &msg)
+inline auto operator<<(std::ostream &os, ksnp_msg_keep_alive_stream const &msg) -> std::ostream &
 {
     return os << "ksnp_msg_keep_alive_stream{" << msg.key_stream_id << "}";
 }
 
-inline std::ostream &operator<<(std::ostream &os, ksnp_msg_keep_alive_stream_reply const &msg)
+inline auto operator<<(std::ostream &os, ksnp_msg_keep_alive_stream_reply const &msg) -> std::ostream &
 {
-    return os << "ksnp_msg_keep_alive_stream_reply{" << msg.code << sep << (msg.message ? msg.message : "") << "}";
+    return os << "ksnp_msg_keep_alive_stream_reply{" << msg.code << sep << (msg.message != nullptr ? msg.message : "")
+              << "}";
 }
 
-inline std::ostream &operator<<(std::ostream &os, ksnp_msg_capacity_notify const &msg)
+inline auto operator<<(std::ostream &os, ksnp_msg_capacity_notify const &msg) -> std::ostream &
 {
     return os << "ksnp_msg_capacity_notify{" << msg.additional_capacity << "}";
 }
 
-inline std::ostream &operator<<(std::ostream &os, ksnp_msg_key_data_notify const &msg)
+inline auto operator<<(std::ostream &os, ksnp_msg_key_data_notify const &msg) -> std::ostream &
 {
     return os << "ksnp_msg_key_data_notify{" << msg.key_data << sep << msg.parameters << "}";
 }
 
 template<ostreamable... Alts>
-std::ostream &operator<<(std::ostream &os, std::variant<Alts...> const &v)
+auto operator<<(std::ostream &os, std::variant<Alts...> const &value) -> std::ostream &
 {
     return std::visit(
         [&](auto &&alt) -> std::ostream & {
             return (os << alt);
         },
-        v);
+        value);
 }
 
 class const_data : public std::span<uint8_t const>
@@ -607,11 +612,13 @@ inline auto operator""_cdat(char const *str, size_t len) noexcept -> const_data
     return const_data{str, len};
 }
 
-inline std::ostream &operator<<(std::ostream &os, const_data const &data)
+inline auto operator<<(std::ostream &os, const_data const &data) -> std::ostream &
 {
     os << "{";
-    for (auto const &x: data) {
-        os << std::format("{:02X}", x);
+    for (auto const &byte: data) {
+        os << std::format("{:02X}", byte);
     }
     return os << "}";
 }
+
+// NOLINTEND(readability-identifier-length, readability-named-parameter, hicpp-named-parameter)

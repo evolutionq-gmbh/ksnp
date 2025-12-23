@@ -13,9 +13,10 @@
 #include "ksnp/serde.h"
 #include "ksnp/server.h"
 #include "ksnp/types.h"
-#include "test_helpers.hpp"
+#include "test_helpers.hpp"  // IWYU pragma: keep; false positive
 
-static size_t const BUFFER_SIZE = 1024;
+static size_t const        BUFFER_SIZE    = 1024;
+static unsigned char const KEY_DATA_VALUE = 0x44;
 
 using json_obj = ksnp::unique_obj<json_object *, json_object_put>;
 
@@ -348,7 +349,7 @@ BOOST_AUTO_TEST_CASE(test_connection_client_chunk_size)
     BOOST_CHECK(conn.client().next_event() == ksnp::client_event{event});
 
     // Derive key data from a fixed buffer
-    std::vector<unsigned char> key_source(BUFFER_SIZE, 0x44);
+    std::vector<unsigned char> key_source(BUFFER_SIZE, KEY_DATA_VALUE);
     ksnp_data                  key_data{.data = key_source.data(), .len = 0};
 
     // Nothing to write on insufficent key data

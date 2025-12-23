@@ -261,7 +261,7 @@ template<std::unsigned_integral TargetUint>
 }
 
 template<typename... string_views>
-[[nodiscard]] constexpr inline bool key_allowed(std::string_view key, string_views... allowed_keys) noexcept
+[[nodiscard]] constexpr auto key_allowed(std::string_view key, string_views... allowed_keys) noexcept -> bool
 {
     return ((key == allowed_keys) || ...);
 }
@@ -853,6 +853,10 @@ private:
             return json_to_qos_range<QosExpectedValue, ParseObj>(obj);
         case json_type_array:
             return this->register_qos_list<QosExpectedValue, TargetType, ParseObj>(obj);
+        case json_type_boolean:
+        case json_type_double:
+        case json_type_int:
+        case json_type_string:
         default:
             throw ksnp::protocol_exception(ksnp_error_code::KSNP_PROT_E_BAD_JSON_TYPE);
         }
@@ -1000,12 +1004,14 @@ public:
 
     auto write_data(std::span<unsigned char> data) -> size_t
     {
-        auto to_copy =
-            static_cast<decltype(this->output_data)::difference_type>(std::min(this->output_data.size(), data.size()));
+        auto to_copy = std::span(this->output_data);
+        if (to_copy.size() > data.size()) {
+            to_copy = to_copy.first(data.size());
+        }
 
-        std::copy_n(this->output_data.begin(), to_copy, data.begin());
-        this->output_data.consume(to_copy);
-        return static_cast<size_t>(to_copy);
+        std::ranges::copy(to_copy, data.begin());
+        this->output_data.consume(to_copy.size());
+        return to_copy.size();
     }
 
     auto next_message(struct ksnp_message const **msg, ksnp_protocol_error *protocol_error) -> ksnp_error
