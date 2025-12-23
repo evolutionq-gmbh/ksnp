@@ -12,12 +12,13 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
-#include <format>
 #include <iostream>
 #include <netdb.h>
 #include <optional>
 #include <source_location>
 #include <span>
+#include <sstream>
+#include <string_view>
 #include <sys/poll.h>
 #include <unistd.h>
 
@@ -32,10 +33,6 @@
 static uint16_t const CHUNK_SIZE = 32;
 
 static size_t const EXCEPTION_BUFFER_SIZE = 512;
-
-/// @brief Static storage for exception messages.
-static inline thread_local std::array<char, EXCEPTION_BUFFER_SIZE>
-    exception_message_buffer{};  // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
 
 /**
  * @brief Exception that may be thrown as a result of some error code indicating
@@ -55,6 +52,7 @@ private:
     E                    err;
     char const          *message;
     std::source_location loc;
+    std::optional<std::string> mutable formatted_message;
 
 public:
     explicit error_code_exception(E                    err,
@@ -93,25 +91,18 @@ public:
      */
     [[nodiscard]] auto what() const noexcept -> char const * override
     {
-        if (this->message != nullptr) {
-            auto const result = std::format_to_n(exception_message_buffer.begin(),
-                                                 exception_message_buffer.size() - 1,
-                                                 "{}:{} {}: {}\0",
-                                                 loc.file_name(),
-                                                 loc.line(),
-                                                 this->message,
-                                                 fmt_error(this->err));
-            *result.out       = '\0';
-        } else {
-            auto const result = std::format_to_n(exception_message_buffer.begin(),
-                                                 exception_message_buffer.size() - 1,
-                                                 "{}:{}: {}\0",
-                                                 loc.file_name(),
-                                                 loc.line(),
-                                                 fmt_error(this->err));
-            *result.out       = '\0';
+        if (!this->formatted_message) {
+            std::stringstream strs;
+            strs << loc.file_name() << ':' << loc.line();
+            if (this->message != nullptr) {
+                strs << ' ' << this->message;
+            }
+            strs << fmt_error(this->err);
+
+            this->formatted_message = strs.str();
         }
-        return exception_message_buffer.data();
+
+        return this->formatted_message->c_str();
     }
 };
 
