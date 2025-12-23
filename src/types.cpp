@@ -19,6 +19,8 @@ auto ksnp_status_code_description(ksnp_status_code code) -> char const *
         return "parameter value out of range";
     case ksnp_status_code::KSNP_STATUS_OPERATION_NOT_SUPPORTED:
         return "operation not supported";
+    case ksnp_status_code::KSNP_STATUS_NOTIFY_DUE_TO_PEER:
+        return "stream state changed by peer";
     default:
         return nullptr;
     }
@@ -89,6 +91,8 @@ auto ksnp_error_description(ksnp_error error) -> char const *
         return "message type invalid";
     case ksnp_error::KSNP_E_INVALID_EVENT_TYPE:
         return "event type invalid";
+    case ksnp_error::KSNP_E_CHUNK_SIZE_TOO_LARGE:
+        return "chunk size too large";
     default:
         return "unknown error";
     }
