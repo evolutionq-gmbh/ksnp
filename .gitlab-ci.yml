@@ -1,0 +1,64 @@
+default:
+  image: docker.io/debian:trixie-slim
+
+variables:
+  DEBIAN_FRONTEND: noninteractive
+
+build:
+  stage: build
+  before_script:
+    - apt-get update
+    - >-
+      apt-get install -y --no-install-recommends
+      cmake
+      doxygen
+      gcc
+      g++
+      libboost-test-dev
+      libjson-c-dev
+      ninja-build
+      uuid-dev
+  script:
+    - >-
+      cmake -S . -B build
+      -G"Ninja Multi-Config"
+      -DBUILD_EXAMPLES=ON
+      -DBUILD_TEST=ON
+      -DBUILD_DOCS=ON
+    - cmake --build build --parallel --config Debug
+    - cmake --build build --parallel --config Release
+  artifacts:
+    paths:
+        - build/Release/client
+        - build/Release/server
+        - build/Release/test_api
+
+test:
+  stage: test
+  variables:
+    GIT_STRATEGY: none
+  before_script:
+    - apt-get update
+    - >-
+      apt-get install -y --no-install-recommends
+      libjson-c5
+      libuuid1
+  script:
+    - build/Release/test_api
+    - build/Release/server ::1 5678 &
+    - sleep 0.5
+    - |
+      build/Release/client ::1 5678 >client_output <<EOF
+      open test
+      get
+      get
+      get
+      get
+      get
+      get
+      get
+      get
+      close
+      EOF
+    - kill %1
+    - "[[ $(grep 'Retrieved key' client_output | wc -l) == 8 ]]"
