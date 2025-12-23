@@ -339,18 +339,20 @@ auto inline operator==(ksnp_server_event_error const &left, ksnp_server_event_er
 // types.
 template<typename Enum>
 requires std::is_enum_v<Enum>
-struct std::formatter<Enum> {
+struct enum_formatter {
+private:
     using U = std::underlying_type_t<Enum>;
     std::formatter<U> underlying_fmt;
 
+public:
     constexpr auto parse(std::format_parse_context &ctx)
     {
         return underlying_fmt.parse(ctx);
     }
 
-    auto format(Enum const &e, std::format_context &ctx) const
+    auto format(Enum const &value, std::format_context &ctx) const
     {
-        return underlying_fmt.format(static_cast<U>(e), ctx);
+        return underlying_fmt.format(static_cast<U>(value), ctx);
     }
 };
 
@@ -358,6 +360,10 @@ namespace
 {
 char constexpr sep[] = ", ";
 }
+template<>
+struct std::formatter<ksnp_status_code> : public enum_formatter<ksnp_status_code> {};
+template<>
+struct std::formatter<ksnp_error_code> : public enum_formatter<ksnp_error_code> {};
 
 // Forward output stream operator for generic enums to the output stream
 // operator of uint64_t.
