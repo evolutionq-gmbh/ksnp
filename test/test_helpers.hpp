@@ -327,7 +327,7 @@ auto inline operator==(ksnp_server_event_new_capacity const &left, ksnp_server_e
 
 auto inline operator==(ksnp_server_event_keep_alive const &left, ksnp_server_event_keep_alive const &right) -> bool
 {
-    return compare1(left, right);
+    return std::ranges::equal(std::span{left.stream_id}, std::span{right.stream_id});
 }
 
 auto inline operator==(ksnp_server_event_error const &left, ksnp_server_event_error const &right) -> bool
