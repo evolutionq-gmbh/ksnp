@@ -5,8 +5,8 @@
 
 #include <boost/test/data/test_case.hpp>
 #include <boost/test/unit_test.hpp>
-#include <json_object.h>
-#include <json_types.h>
+#include <json-c/json_object.h>
+#include <json-c/json_types.h>
 
 #include "common.hpp"
 #include "helpers.hpp"

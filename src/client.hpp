@@ -1,7 +1,6 @@
+#include <cstdint>
 #include <optional>
 #include <span>
-
-#include <json-c/json.h>
 
 #include "helpers.hpp"
 #include "ksnp/client.h"

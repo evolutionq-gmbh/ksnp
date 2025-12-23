@@ -13,12 +13,12 @@
 #include <string_view>
 #include <type_traits>
 #include <utility>
-#include <uuid/uuid.h>
 #include <vector>
 
 #include <json-c/json_object.h>
 #include <json-c/json_object_iterator.h>
 #include <json-c/json_tokener.h>
+#include <uuid/uuid.h>
 
 #include "helpers.hpp"
 #include "ksnp/messages.h"

@@ -1,16 +1,14 @@
 #pragma once
 
 #include <algorithm>
-#include <cassert>
 #include <concepts>
 #include <exception>
-#include <json_object.h>
-#include <netdb.h>
 #include <new>
 #include <optional>
-#include <uuid/uuid.h>
 #include <variant>
 #include <vector>
+
+#include <json-c/json_object.h>
 
 #include "ksnp/client.h"
 #include "ksnp/messages.h"

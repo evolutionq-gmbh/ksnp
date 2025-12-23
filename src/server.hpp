@@ -3,8 +3,6 @@
 #include <span>
 #include <vector>
 
-#include <json-c/json.h>
-
 #include "helpers.hpp"
 #include "ksnp/server.h"
 #include "ksnp/types.h"

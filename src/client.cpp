@@ -1,8 +1,9 @@
 #include <algorithm>
-#include <json_types.h>
 #include <limits>
 #include <optional>
 #include <stdexcept>
+
+#include <json-c/json_types.h>
 
 #include "client.hpp"
 #include "helpers.hpp"

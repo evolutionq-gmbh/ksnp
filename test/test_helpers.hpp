@@ -2,9 +2,12 @@
 
 #include <algorithm>
 #include <cstring>
+#include <format>
+#include <iostream>
 #include <span>
 #include <tuple>
 #include <type_traits>
+#include <variant>
 
 #include <json-c/json_object.h>
 

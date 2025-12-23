@@ -4,14 +4,10 @@ Single connection context
 
 #include <algorithm>
 #include <cstddef>
-#include <cstring>
 #include <iterator>
 #include <limits>
-#include <new>
 #include <optional>
 #include <stdexcept>
-
-#include <uuid/uuid.h>
 
 #include "helpers.hpp"
 #include "ksnp/messages.h"
