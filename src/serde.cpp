@@ -25,6 +25,11 @@
 #include "ksnp/serde.h"
 #include "ksnp/types.h"
 
+#ifndef JSON_C_OBJECT_ADD_CONSTANT_KEY
+// Support for legacy JSON-C versions.
+#define JSON_C_OBJECT_ADD_CONSTANT_KEY JSON_C_OBJECT_KEY_IS_CONSTANT
+#endif
+
 using namespace ksnp;
 
 namespace
