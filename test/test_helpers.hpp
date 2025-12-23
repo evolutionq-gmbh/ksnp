@@ -31,7 +31,13 @@ auto inline compare_eq(char const *left, char const *right) -> bool
     if (left == nullptr || right == nullptr) {
         return left == right;
     }
+#ifdef __clang__
+#pragma clang unsafe_buffer_usage begin
+#endif
     return std::strcmp(left, right) == 0;
+#ifdef __clang__
+#pragma clang unsafe_buffer_usage end
+#endif
 }
 
 template<>
@@ -60,8 +66,14 @@ auto inline compare_qos(T const &left, T const &right) -> bool
     case ksnp_qos_type::KSNP_QOS_NULL:
         return true;
     case ksnp_qos_type::KSNP_QOS_LIST: {
+#ifdef __clang__
+#pragma clang unsafe_buffer_usage begin
+#endif
         std::span left_values{left.list.values, left.list.count};
         std::span right_values{right.list.values, right.list.count};
+#ifdef __clang__
+#pragma clang unsafe_buffer_usage end
+#endif
         return std::ranges::equal(left_values, right_values);
     }
     case ksnp_qos_type::KSNP_QOS_RANGE:
@@ -106,7 +118,15 @@ auto inline operator==(ksnp_rate const &left, ksnp_rate const &right)
 
 auto inline operator==(ksnp_data const &left, ksnp_data const &right)
 {
-    return std::ranges::equal(std::span{left.data, left.len}, std::span{right.data, right.len});
+#ifdef __clang__
+#pragma clang unsafe_buffer_usage begin
+#endif
+    auto left_data  = std::span{left.data, left.len};
+    auto right_data = std::span{right.data, right.len};
+#ifdef __clang__
+#pragma clang unsafe_buffer_usage end
+#endif
+    return std::ranges::equal(left_data, right_data);
 }
 
 auto inline operator==(ksnp_stream_open_params const &left, ksnp_stream_open_params const &right) -> bool
@@ -399,8 +419,15 @@ inline std::ostream &operator<<(std::ostream &os, json_object const *obj)
 
 inline std::ostream &operator<<(std::ostream &os, ksnp_data const &data)
 {
-    for (size_t i = 0; i < data.len; ++i) {
-        os << std::format("{:02x}", data.data[i]);
+#ifdef __clang__
+#pragma clang unsafe_buffer_usage begin
+#endif
+    auto buffer = std::span{data.data, data.len};
+#ifdef __clang__
+#pragma clang unsafe_buffer_usage end
+#endif
+    for (auto const &byte: buffer) {
+        os << std::format("{:02x}", byte);
     }
     return os;
 }
@@ -433,15 +460,26 @@ requires ostreamable<decltype(qos.range.min)>
         return os << "qos{null}";
     case ksnp_qos_type::KSNP_QOS_RANGE:
         return os << "qos{" << qos.range.min << sep << qos.range.max << "}";
-    case ksnp_qos_type::KSNP_QOS_LIST:
+    case ksnp_qos_type::KSNP_QOS_LIST: {
+#ifdef __clang__
+#pragma clang unsafe_buffer_usage begin
+#endif
+        auto values = std::span{qos.list.values, qos.list.count};
+#ifdef __clang__
+#pragma clang unsafe_buffer_usage end
+#endif
         os << "qos[";
-        for (size_t i = 0; i < qos.list.count; ++i) {
-            os << qos.list.values[i];
-            if (i + 1 < qos.list.count) {
+        bool first = true;
+        for (auto const &value: values) {
+            if (!first) {
                 os << sep;
+            } else {
+                first = false;
             }
+            os << value;
         }
         return os << "]";
+    }
     default:
         return os << "qos{bad type}";
     }
@@ -553,7 +591,14 @@ std::ostream &operator<<(std::ostream &os, std::variant<Alts...> const &v)
 class const_data : public std::span<uint8_t const>
 {
 public:
-    const_data(char const *_data, size_t _count) : span(reinterpret_cast<uint8_t const *>(_data), _count)
+    const_data(char const *_data, size_t _count) noexcept
+#ifdef __clang__
+#pragma clang unsafe_buffer_usage begin
+#endif
+        : span(reinterpret_cast<uint8_t const *>(_data), _count)
+#ifdef __clang__
+#pragma clang unsafe_buffer_usage end
+#endif
     {}
 };
 

@@ -734,7 +734,8 @@ io_loop_start:
                 read_buffer.resize(read_buffer.capacity());
 
                 try {
-                    auto count = ::read(*sock, read_buffer.data() + orig_len, read_buffer.size() - orig_len);
+                    auto read_buffer_spare = std::span(read_buffer).subspan(orig_len);
+                    auto count             = ::read(*sock, read_buffer_spare.data(), read_buffer_spare.size());
                     if (count == -1) {
                         if (errno != EWOULDBLOCK) {
                             throw errno_exception(errno, "Failed to read from socket");

@@ -41,7 +41,7 @@ BOOST_AUTO_TEST_CASE(test_message_context_basics)
     ctx.write_message(&raw_msg);
     BOOST_TEST(ctx.want_write());
     BOOST_TEST(ctx.write_data({write_buffer}) == 6);
-    BOOST_TEST(std::memcmp(write_buffer.data(), version_data.data(), 6) == 0);
+    BOOST_TEST(std::ranges::equal(std::span(write_buffer).first(6), std::span(version_data)));
     BOOST_TEST(!ctx.want_write());
 
     // Reading a version message set want_read to false and make the message
@@ -115,13 +115,13 @@ BOOST_AUTO_TEST_CASE(test_message_context_partial_read)
 
     // Write single bytes, no message should be available until the last one was
     // written.
-    for (auto byte: std::span{version_data.begin(), version_data.end() - 1}) {
+    for (auto byte: std::span(version_data).first(5)) {
         BOOST_TEST(ctx.read_data({&byte, 1}) == 1);
         BOOST_TEST(ctx.want_read());
         BOOST_TEST(!ctx.next_event().has_value());
     }
 
-    BOOST_TEST(ctx.read_data({version_data.end() - 1, version_data.end()}) == 1);
+    BOOST_TEST(ctx.read_data(std::span(version_data).subspan(5)) == 1);
     BOOST_TEST(!ctx.want_read());
     BOOST_TEST(ctx.next_event().has_value());
     BOOST_TEST(ctx.want_read());
@@ -129,12 +129,12 @@ BOOST_AUTO_TEST_CASE(test_message_context_partial_read)
     // Write a complete and partial message. One should complete immediately,
     // leaving the rest for a later write.
     BOOST_TEST(ctx.read_data({version_data}) == 6);
-    BOOST_TEST(ctx.read_data({version_data.begin(), version_data.end() - 1}) == 5);
+    BOOST_TEST(ctx.read_data(std::span{version_data}.first(5)) == 5);
 
     BOOST_TEST(ctx.next_event().has_value());
     BOOST_TEST(ctx.want_read());
     BOOST_TEST(!ctx.next_event().has_value());
-    BOOST_TEST(ctx.read_data({version_data.end() - 1, version_data.end()}) == 1);
+    BOOST_TEST(ctx.read_data(std::span{version_data}.subspan(5)) == 1);
     BOOST_TEST(!ctx.want_read());
     BOOST_TEST(ctx.next_event().has_value());
     BOOST_TEST(ctx.want_read());

@@ -212,7 +212,13 @@ try {
         throw errno_exception(errno);
     }
 
+#ifdef __clang__
+#pragma clang unsafe_buffer_usage begin
+#endif
     auto listen_sock = listen(argv[1], argv[2]);
+#ifdef __clang__
+#pragma clang unsafe_buffer_usage end
+#endif
 
     while (true) {
         std::cout << "Waiting for connection\n";

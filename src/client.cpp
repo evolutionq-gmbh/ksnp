@@ -371,7 +371,14 @@ auto ksnp_client_want_read(struct ksnp_client const *client) noexcept -> bool
 
 auto ksnp_client_read_data(struct ksnp_client *client, uint8_t const *data, size_t *len) noexcept -> ksnp_error
 try {
-    *len = client->read_data(std::span{data, *len});
+#ifdef __clang__
+#pragma clang unsafe_buffer_usage begin
+#endif
+    auto buffer = std::span{data, *len};
+#ifdef __clang__
+#pragma clang unsafe_buffer_usage end
+#endif
+    *len = client->read_data(buffer);
     return ksnp_error::KSNP_E_NO_ERROR;
 }
 CATCH_ALL
@@ -402,7 +409,14 @@ CATCH_ALL
 
 auto ksnp_client_write_data(struct ksnp_client *client, uint8_t *data, size_t *len) noexcept -> ksnp_error
 try {
-    *len = client->write_data(std::span{data, *len});
+#ifdef __clang__
+#pragma clang unsafe_buffer_usage begin
+#endif
+    auto buffer = std::span{data, *len};
+#ifdef __clang__
+#pragma clang unsafe_buffer_usage end
+#endif
+    *len = client->write_data(buffer);
     return ksnp_error::KSNP_E_NO_ERROR;
 }
 CATCH_ALL

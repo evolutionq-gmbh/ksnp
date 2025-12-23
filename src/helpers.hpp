@@ -296,7 +296,13 @@ private:
     static auto append_fn(struct ksnp_buffer *buffer, unsigned char const *data, size_t len) noexcept -> ksnp_error
     try {
         auto *self = static_cast<vector_buffer *>(buffer);
-        std::copy_n(data, len, std::back_inserter(*self));
+#ifdef __clang__
+#pragma clang unsafe_buffer_usage begin
+#endif
+        self->insert(self->end(), data, data + len);
+#ifdef __clang__
+#pragma clang unsafe_buffer_usage end
+#endif
         return ksnp_error::KSNP_E_NO_ERROR;
     } catch (std::bad_alloc const &) {
         return ksnp_error::KSNP_E_NO_MEM;

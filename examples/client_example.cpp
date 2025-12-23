@@ -17,6 +17,7 @@
 #include <deque>
 #include <fcntl.h>
 #include <iostream>
+#include <memory>
 #include <optional>
 #include <stdexcept>
 #include <sys/poll.h>
@@ -205,7 +206,13 @@ auto client::process_event(client_obj::result_type &event) -> bool
             return true;
         },
         [this](ksnp_client_event_key_data &evt) -> bool {
-            std::span<unsigned char const> key_data{evt.key_data.data, evt.key_data.len};
+#ifdef __clang__
+#pragma clang unsafe_buffer_usage begin
+#endif
+            auto key_data = std::span{evt.key_data.data, evt.key_data.len};
+#ifdef __clang__
+#pragma clang unsafe_buffer_usage end
+#endif
             while (key_data.size() >= CHUNK_SIZE) {
                 auto chunk = key_chunk{};
                 std::ranges::copy(key_data.subspan(0, CHUNK_SIZE), std::begin(chunk));
@@ -341,7 +348,13 @@ try {
         throw errno_exception(errno);
     }
 
+#ifdef __clang__
+#pragma clang unsafe_buffer_usage begin
+#endif
     auto sock = connect(argv[1], argv[2]);
+#ifdef __clang__
+#pragma clang unsafe_buffer_usage end
+#endif
 
     int flags = check_errno(fcntl(*sock, F_GETFL, 0));
     check_errno(fcntl(*sock, F_SETFL, flags | O_NONBLOCK));
@@ -372,8 +385,8 @@ try {
                                .required_extensions = nullptr,
                            };
                            if (cmd.stream_id.has_value()) {
-                               if (uuid_parse_range(&cmd.stream_id->front(),
-                                                    &cmd.stream_id->back() + 1,
+                               if (uuid_parse_range(std::to_address(cmd.stream_id->begin()),
+                                                    std::to_address(cmd.stream_id->end()),
                                                     std::begin(params.stream_id))
                                    != 0) {
                                    std::cout << "Invalid stream ID\n";

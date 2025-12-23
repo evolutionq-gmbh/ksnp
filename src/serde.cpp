@@ -85,6 +85,9 @@ public:
         this->buf->truncate(this->buf, count);
     }
 
+#ifdef __clang__
+#pragma clang unsafe_buffer_usage begin
+#endif
     [[nodiscard]] auto begin() -> unsigned char *
     {
         return this->data();
@@ -114,6 +117,9 @@ public:
     {
         return this->data() + this->size();
     }
+#ifdef __clang__
+#pragma clang unsafe_buffer_usage end
+#endif
 };
 
 class zstring_view : public std::string_view
@@ -512,7 +518,13 @@ requires std::convertible_to<decltype(std::declval<QosExpectedValue>().range.min
         break;
     }
     case ksnp_qos_type::KSNP_QOS_LIST: {
+#ifdef __clang__
+#pragma clang unsafe_buffer_usage begin
+#endif
         auto list = std::span(qos.list.values, qos.list.count);
+#ifdef __clang__
+#pragma clang unsafe_buffer_usage end
+#endif
         if (!std::in_range<int>(list.size())) {
             throw exception(ksnp_error::KSNP_E_INVALID_ARGUMENT);
         }
@@ -941,13 +953,21 @@ private:
                 throw ksnp::protocol_exception(ksnp_error_code::KSNP_PROT_E_BAD_JSON_VAL);
             }
             break;
-        case ksnp_qos_type::KSNP_QOS_LIST:
-            for (auto val: std::span{params.chunk_size.list.values, params.chunk_size.list.count}) {
+        case ksnp_qos_type::KSNP_QOS_LIST: {
+#ifdef __clang__
+#pragma clang unsafe_buffer_usage begin
+#endif
+            auto values = std::span{params.chunk_size.list.values, params.chunk_size.list.count};
+#ifdef __clang__
+#pragma clang unsafe_buffer_usage end
+#endif
+            for (auto val: values) {
                 if (val > KSNP_MAX_CHUNK_SIZE) {
                     throw ksnp::protocol_exception(ksnp_error_code::KSNP_PROT_E_BAD_JSON_VAL);
                 }
             }
             break;
+        }
         case ksnp_qos_type::KSNP_QOS_NONE:
         case ksnp_qos_type::KSNP_QOS_NULL:
         default:
@@ -1296,7 +1316,13 @@ public:
                 write_u32(msg->capacity_notify.additional_capacity);
                 break;
             case ksnp_message_type::KSNP_MSG_KEY_DATA_NOTIFY: {
+#ifdef __clang__
+#pragma clang unsafe_buffer_usage begin
+#endif
                 std::span key_data(msg->key_data_notify.key_data.data, msg->key_data_notify.key_data.len);
+#ifdef __clang__
+#pragma clang unsafe_buffer_usage end
+#endif
                 write_u16(static_cast<uint16_t>(key_data.size()));
                 this->output_data.append(key_data.data(), key_data.size());
                 if (msg->key_data_notify.parameters != nullptr) {
@@ -1314,8 +1340,9 @@ public:
                 throw ksnp::exception(ksnp_error::KSNP_E_SER_MSG_TOO_LARGE);
             }
             // Overwrite the placeholder in the output queue by the message length.
-            std::ranges::copy(uint_to_be(static_cast<uint16_t>(msg_len)),
-                              this->output_data.data() + orig_out_len + sizeof(uint16_t));
+            std::ranges::copy(
+                uint_to_be(static_cast<uint16_t>(msg_len)),
+                std::span{this->output_data}.subspan(orig_out_len + sizeof(uint16_t), sizeof(uint16_t)).begin());
         } catch (...) {
             // Erase data inserted into output queue, if any, then rethrow.
             this->output_data.truncate(orig_out_len);
@@ -1357,7 +1384,14 @@ auto ksnp_message_context_want_read(struct ksnp_message_context *ctx) noexcept -
 auto ksnp_message_context_read_data(struct ksnp_message_context *ctx, unsigned char const *data, size_t *len) noexcept
     -> ksnp_error
 try {
-    return ctx->read_data(std::span{data, *len}, len);
+#ifdef __clang__
+#pragma clang unsafe_buffer_usage begin
+#endif
+    auto buffer = std::span{data, *len};
+#ifdef __clang__
+#pragma clang unsafe_buffer_usage end
+#endif
+    return ctx->read_data(buffer, len);
 }
 CATCH_ALL
 
@@ -1387,7 +1421,14 @@ auto ksnp_message_context_want_write(struct ksnp_message_context *ctx) noexcept 
 auto ksnp_message_context_write_data(struct ksnp_message_context *ctx, unsigned char *data, size_t *len) noexcept
     -> ksnp_error
 try {
-    auto copied = ctx->write_data(std::span{data, *len});
+#ifdef __clang__
+#pragma clang unsafe_buffer_usage begin
+#endif
+    auto buffer = std::span{data, *len};
+#ifdef __clang__
+#pragma clang unsafe_buffer_usage end
+#endif
+    auto copied = ctx->write_data(buffer);
     *len        = copied;
     return ksnp_error::KSNP_E_NO_ERROR;
 }

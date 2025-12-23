@@ -460,7 +460,14 @@ void ksnp_simple_stream_destroy(ksnp_stream *stream) noexcept
 auto ksnp_simple_stream_add_key_data(ksnp_stream *stream, ksnp_data key_data) noexcept -> ksnp_error
 {
     try {
-        static_cast<simple_stream *>(stream)->add_key_data(std::span(key_data.data, key_data.data + key_data.len));
+#ifdef __clang__
+#pragma clang unsafe_buffer_usage begin
+#endif
+        auto key_buffer = std::span(key_data.data, key_data.len);
+#ifdef __clang__
+#pragma clang unsafe_buffer_usage end
+#endif
+        static_cast<simple_stream *>(stream)->add_key_data(key_buffer);
         return ksnp_error::KSNP_E_NO_ERROR;
     }
     CATCH_ALL
@@ -512,7 +519,14 @@ auto ksnp_server_want_read(struct ksnp_server const *server) noexcept -> bool
 auto ksnp_server_read_data(struct ksnp_server *server, uint8_t const *data, size_t *len) noexcept -> ksnp_error
 {
     try {
-        *len = server->read_data(std::span(data, data + *len));
+#ifdef __clang__
+#pragma clang unsafe_buffer_usage begin
+#endif
+        auto buffer = std::span{data, *len};
+#ifdef __clang__
+#pragma clang unsafe_buffer_usage end
+#endif
+        *len = server->read_data(buffer);
         return ksnp_error::KSNP_E_NO_ERROR;
     }
     CATCH_ALL
@@ -546,7 +560,14 @@ CATCH_ALL
 auto ksnp_server_write_data(struct ksnp_server *server, uint8_t *data, size_t *len) noexcept -> ksnp_error
 {
     try {
-        *len = server->write_data(std::span(data, data + *len));
+#ifdef __clang__
+#pragma clang unsafe_buffer_usage begin
+#endif
+        auto buffer = std::span{data, *len};
+#ifdef __clang__
+#pragma clang unsafe_buffer_usage end
+#endif
+        *len = server->write_data(buffer);
         return ksnp_error::KSNP_E_NO_ERROR;
     }
     CATCH_ALL
