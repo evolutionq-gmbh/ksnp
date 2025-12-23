@@ -11,7 +11,6 @@
 #include <span>
 #include <stdexcept>
 #include <string_view>
-#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -104,16 +103,6 @@ public:
     }
 
     [[nodiscard]] auto end() const -> unsigned char const *
-    {
-        return this->data() + this->size();
-    }
-
-    [[nodiscard]] auto cbegin() const -> unsigned char const *
-    {
-        return this->data();
-    }
-
-    [[nodiscard]] auto cend() const -> unsigned char const *
     {
         return this->data() + this->size();
     }
@@ -228,17 +217,6 @@ constexpr auto uint_to_be(SourceUint val) -> std::array<U8, sizeof(SourceUint)>
     }
 
     return result;
-}
-
-template<std::unsigned_integral T>
-[[nodiscard]] auto is_all_zero(std::span<T> buf)
-{
-    for (auto val: buf) {
-        if (val != 0) {
-            return false;
-        }
-    }
-    return true;
 }
 
 using json_obj_deleter = unique_obj<json_object *, json_object_put>;
