@@ -1,3 +1,19 @@
+CompileFlags:
+  Add:
+    - -Weverything
+    - -Wno-c++98-compat
+    - -Wno-c++98-compat-pedantic
+    - -Wno-padded
+    - -Wno-covered-switch-default
+    - -Wno-shadow-field-in-constructor
+    - -Wno-shadow-uncaptured-local
+    - -Wno-shadow-field
+    - -Wno-unused-macros
+    - -Wno-global-constructors
+    - -Wno-exit-time-destructors
+    - -Wno-weak-vtables
+    - -Wno-documentation
+    - -ferror-limit=0
 Diagnostics:
   ClangTidy:
     FastCheckFilter: Loose
