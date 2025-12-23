@@ -5,6 +5,7 @@
 #include <exception>
 #include <new>
 #include <optional>
+#include <string_view>
 #include <variant>
 #include <vector>
 
@@ -313,6 +314,25 @@ private:
         static_cast<vector_buffer *>(buffer)->resize(size);
     }
 };
+
+class zstring_view : public std::string_view
+{
+public:
+    explicit constexpr zstring_view(std::string_view str) : std::string_view(str)
+    {}
+
+    [[nodiscard]] auto c_str() const noexcept -> char const *
+    {
+        return this->data();
+    }
+};
+
+constexpr auto operator""_zsv(char const *str, size_t len) noexcept -> zstring_view
+{
+    return zstring_view{
+        std::string_view{str, len}
+    };
+}
 
 using message_t = std::variant<ksnp_msg_version,
                                ksnp_msg_open_stream,

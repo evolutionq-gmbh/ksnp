@@ -122,25 +122,6 @@ public:
 #endif
 };
 
-class zstring_view : public std::string_view
-{
-public:
-    explicit constexpr zstring_view(std::string_view str) : std::string_view(str)
-    {}
-
-    [[nodiscard]] auto c_str() const -> char const *
-    {
-        return this->data();
-    }
-};
-
-constexpr auto operator""_zsv(char const *str, size_t len) noexcept -> zstring_view
-{
-    return zstring_view{
-        std::string_view{str, len}
-    };
-}
-
 constexpr zstring_view json_key_ksid                = "key-stream-id"_zsv;
 constexpr zstring_view json_key_source              = "source"_zsv;
 constexpr zstring_view json_key_destination         = "destination"_zsv;

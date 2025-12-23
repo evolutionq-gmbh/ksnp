@@ -175,7 +175,7 @@ BOOST_AUTO_TEST_CASE(test_message_context_partial_write)
 namespace
 {
 
-char const test_string[] = "abcdefghijkl";
+ksnp::zstring_view const test_string = "abcdefghijkl"_zsv;
 
 json_obj test_extension{[] {
     auto obj = json_object_new_object();
@@ -244,7 +244,7 @@ ksnp::message_t const good_messages[] = {
                    .message    = nullptr},
     ksnp_msg_open_stream_reply{.code       = ksnp_status_code::KSNP_STATUS_INVALID_PARAMETER,
                    .parameters = ksnp_stream_reply_params{.qos = &qos_params},
-                   .message    = test_string},
+                   .message    = test_string.c_str()},
     ksnp_msg_close_stream{},
     ksnp_msg_close_stream_reply{},
     ksnp_msg_close_stream_notify{.code = ksnp_status_code::KSNP_STATUS_SUCCESS, .message = nullptr},
@@ -263,11 +263,11 @@ ksnp::message_t const good_messages[] = {
     ksnp_msg_keep_alive_stream_reply{.code    = ksnp_status_code::KSNP_STATUS_OPERATION_NOT_SUPPORTED,
                    .message = "I'm afraid I can't do that"},
     ksnp_msg_capacity_notify{.additional_capacity = 32},
-    ksnp_msg_key_data_notify{.key_data   = ksnp_data{.data = reinterpret_cast<unsigned char const *>(test_string),
-                                                     .len  = std::size(test_string)},
+    ksnp_msg_key_data_notify{.key_data = ksnp_data{.data = reinterpret_cast<unsigned char const *>(test_string.data()),
+                                                   .len  = test_string.size()},
                    .parameters = nullptr},
-    ksnp_msg_key_data_notify{.key_data   = ksnp_data{.data = reinterpret_cast<unsigned char const *>(test_string),
-                                                     .len  = std::size(test_string)},
+    ksnp_msg_key_data_notify{.key_data = ksnp_data{.data = reinterpret_cast<unsigned char const *>(test_string.data()),
+                                                   .len  = test_string.size()},
                    .parameters = *test_extension},
 };
 
@@ -416,10 +416,12 @@ ksnp::message_t const bad_messages_ser[] = {
                          .message    = nullptr},
     ksnp_msg_open_stream_reply{.code       = ksnp_status_code::KSNP_STATUS_SUCCESS,
                          .parameters = ksnp_stream_reply_params{.reply = &acc_params},
-                         .message    = test_string},
-    ksnp_msg_close_stream_notify{.code = ksnp_status_code::KSNP_STATUS_SUCCESS, .message = test_string},
-    ksnp_msg_suspend_stream_reply{.code = ksnp_status_code::KSNP_STATUS_SUCCESS, .timeout = 10, .message = test_string},
-    ksnp_msg_keep_alive_stream_reply{.code = ksnp_status_code::KSNP_STATUS_SUCCESS, .message = test_string},
+                         .message    = test_string.c_str()},
+    ksnp_msg_close_stream_notify{.code = ksnp_status_code::KSNP_STATUS_SUCCESS, .message = test_string.c_str()},
+    ksnp_msg_suspend_stream_reply{.code    = ksnp_status_code::KSNP_STATUS_SUCCESS,
+                         .timeout = 10,
+                         .message = test_string.c_str()},
+    ksnp_msg_keep_alive_stream_reply{.code = ksnp_status_code::KSNP_STATUS_SUCCESS, .message = test_string.c_str()},
 };
 
 const_data const bad_parser_input[] = {
