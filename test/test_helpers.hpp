@@ -602,6 +602,11 @@ public:
     {}
 };
 
+inline auto operator""_cdat(char const *str, size_t len) noexcept -> const_data
+{
+    return const_data{str, len};
+}
+
 inline std::ostream &operator<<(std::ostream &os, const_data const &data)
 {
     os << "{";

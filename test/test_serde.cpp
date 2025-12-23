@@ -426,98 +426,97 @@ ksnp::message_t const bad_messages_ser[] = {
 
 const_data const bad_parser_input[] = {
     // Invalid message size: smaller than header size
-    {"\x00\x00\x00\x03",                                                                                               4 },
+    "\x00\x00\x00\x03"_cdat,
     // Error message too short
-    {"\x00\x00\x00\x04",                                                                                               4 },
+    "\x00\x00\x00\x04"_cdat,
     // Error message too long
-    {"\x00\x00\x00\x09\x00\x00\x00\x00\x00",                                                                           9 },
+    "\x00\x00\x00\x09\x00\x00\x00\x00\x00"_cdat,
     // Version message too short
-    {"\x00\x01\x00\x05\x01",                                                                                           5 },
+    "\x00\x01\x00\x05\x01"_cdat,
     // Version message too long
-    {"\x00\x01\x00\x07\x01\x02\x03",                                                                                   7 },
+    "\x00\x01\x00\x07\x01\x02\x03"_cdat,
     // OpenStream message; missing JSON
-    {"\x00\x02\x00\x04",                                                                                               4 },
+    "\x00\x02\x00\x04"_cdat,
     // OpenStream message; invalid JSON: missing brace
-    {"\x00\x02\x00\x1E{\"destination\":{\"sae\":\"x\"}",                                                               30},
+    "\x00\x02\x00\x1E{\"destination\":{\"sae\":\"x\"}"_cdat,
     // OpenStream message; bad top level JSON object type
-    {"\x00\x02\x00\x08null",                                                                                           8 },
+    "\x00\x02\x00\x08null"_cdat,
     // OpenStream message; unknown JSON key
-    {"\x00\x02\x00\x2A{\"destination\":{\"sae\":\"x\"},\"ttt\":1000}",                                                 42},
+    "\x00\x02\x00\x2A{\"destination\":{\"sae\":\"x\"},\"ttt\":1000}"_cdat,
     // OpenStream message; bad stream_id: missing dash
-    {"\x00\x02\x00\x55{\"destination\":{\"sae\":\"x\"},\"key-stream-id\":\"12345678-12341234-1234-123456789ABC\"}",    85},
+    "\x00\x02\x00\x55{\"destination\":{\"sae\":\"x\"},\"key-stream-id\":\"12345678-12341234-1234-123456789ABC\"}"_cdat,
     // OpenStream message; bad stream_id: missing byte
-    {"\x00\x02\x00\x54{\"destination\":{\"sae\":\"x\"},\"key-stream-id\":\"12345678-1234-1234-1234-123456789A\"}",     84},
+    "\x00\x02\x00\x54{\"destination\":{\"sae\":\"x\"},\"key-stream-id\":\"12345678-1234-1234-1234-123456789A\"}"_cdat,
     // OpenStream message; bad stream_id: extra byte
-    {"\x00\x02\x00\x58{\"destination\":{\"sae\":\"x\"},\"key-stream-id\":\"12345678-1234-1234-1234-123456789ABCDE\"}",
-     88                                                                                                                  },
+    "\x00\x02\x00\x58{\"destination\":{\"sae\":\"x\"},\"key-stream-id\":\"12345678-1234-1234-1234-123456789ABCDE\"}"_cdat,
     // OpenStream message; bad chunk_size: bad type
-    {"\x00\x02\x00\x31{\"destination\":{\"sae\":\"x\"},\"chunk-size\":null}",                                          49},
+    "\x00\x02\x00\x31{\"destination\":{\"sae\":\"x\"},\"chunk-size\":null}"_cdat,
     // OpenStream message; bad chunk_size: bad type
-    {"\x00\x02\x00\x31{\"destination\":{\"sae\":\"x\"},\"chunk-size\":\"16\"}",                                        49},
+    "\x00\x02\x00\x31{\"destination\":{\"sae\":\"x\"},\"chunk-size\":\"16\"}"_cdat,
     // OpenStream message; bad capacity: value exceeds u32 limit
-    {"\x00\x02\x00\x35{\"destination\":{\"sae\":\"x\"},\"capacity\":4294967296}",                                      53},
+    "\x00\x02\x00\x35{\"destination\":{\"sae\":\"x\"},\"capacity\":4294967296}"_cdat,
     // OpenStream message; extra data after JSON
-    {"\x00\x02\x00\x21{\"destination\":{\"sae\":\"x\"}}{}",                                                            33},
+    "\x00\x02\x00\x21{\"destination\":{\"sae\":\"x\"}}{}"_cdat,
     // OpenStream message; unknown key in address subobject
-    {"\x00\x02\x00\x25{\"destination\":{\"sae\":\"x\",\"x\":1}}",                                                      37},
+    "\x00\x02\x00\x25{\"destination\":{\"sae\":\"x\",\"x\":1}}"_cdat,
     // OpenStream message; unknown key in rate subobject
-    {"\x00\x02\x00\x3A{\"destination\":{\"sae\":\"x\"},\"min-bps\":{\"bits\":1,\"x\":1}}",                             58},
+    "\x00\x02\x00\x3A{\"destination\":{\"sae\":\"x\"},\"min-bps\":{\"bits\":1,\"x\":1}}"_cdat,
     // OpenStreamReply message; success with missing JSON
-    {"\x00\x03\x00\x0A\x00\x00\x00\x00\x00\x00",                                                                       10},
+    "\x00\x03\x00\x0A\x00\x00\x00\x00\x00\x00"_cdat,
     // OpenStreamReply message; error with missing JSON
-    {"\x00\x03\x00\x1E\x00\x00\x00\x01\x00\x00something went wrong",                                                   30},
+    "\x00\x03\x00\x1E\x00\x00\x00\x01\x00\x00something went wrong"_cdat,
     // OpenStreamReply message; error with JSON length exceeding remaining message length
-    {"\x00\x03\x00\x0C\x00\x00\x00\x01\x00\x03{}",                                                                     12},
+    "\x00\x03\x00\x0C\x00\x00\x00\x01\x00\x03{}"_cdat,
     // OpenStreamReply message; success code with QoS parameter
-    {"\x00\x03\x00\x3B\x00\x00\x00\x00\x00\x31{\"min-bps\":{\"min\":{\"bits\":1},\"max\":{\"bits\":256}}}",            59},
+    "\x00\x03\x00\x3B\x00\x00\x00\x00\x00\x31{\"min-bps\":{\"min\":{\"bits\":1},\"max\":{\"bits\":256}}}"_cdat,
     // OpenStreamReply message; error code with non-QoS parameter
-    {"\x00\x03\x00\x1B\x00\x00\x00\x01\x00\x11{\"chunk-size\":16}",                                                    27},
+    "\x00\x03\x00\x1B\x00\x00\x00\x01\x00\x11{\"chunk-size\":16}"_cdat,
     // OpenStreamReply message; QoS parameter exceeding u32 limit
-    {"\x00\x03\x00\x25\x00\x00\x00\x01\x00\x1B{\"chunk-size\":[4294967296]}",                                          37},
+    "\x00\x03\x00\x25\x00\x00\x00\x01\x00\x1B{\"chunk-size\":[4294967296]}"_cdat,
     // OpenStreamReply message; QoS parameter with bad type
-    {"\x00\x03\x00\x1F\x00\x00\x00\x01\x00\x15{\"chunk-size\":[\"16\"]}",                                              31},
+    "\x00\x03\x00\x1F\x00\x00\x00\x01\x00\x15{\"chunk-size\":[\"16\"]}"_cdat,
     // OpenStreamReply message; QoS parameter with unknown key
-    {"\x00\x03\x00\x14\x00\x00\x00\x01\x00\x0A{\"x\":null}",                                                           20},
+    "\x00\x03\x00\x14\x00\x00\x00\x01\x00\x0A{\"x\":null}"_cdat,
     // OpenStreamReply message; QoS parameter with unknown key in range
-    {"\x00\x03\x00\x3F\x00\x00\x00\x01\x00\x35{\"min-bps\":{\"min\":{\"bits\":1},\"max\":{\"bits\":2},\"x\":1}}",      63},
+    "\x00\x03\x00\x3F\x00\x00\x00\x01\x00\x35{\"min-bps\":{\"min\":{\"bits\":1},\"max\":{\"bits\":2},\"x\":1}}"_cdat,
     // OpenStreamReply message; QoS parameter with unknown key in range subobject
-    {"\x00\x03\x00\x3F\x00\x00\x00\x01\x00\x35{\"min-bps\":{\"min\":{\"bits\":1,\"x\":1},\"max\":{\"bits\":2}}}",      63},
+    "\x00\x03\x00\x3F\x00\x00\x00\x01\x00\x35{\"min-bps\":{\"min\":{\"bits\":1,\"x\":1},\"max\":{\"bits\":2}}}"_cdat,
     // OpenStreamReply message; QoS parameter with unknown key in list subobject
-    {"\x00\x03\x00\x28\x00\x00\x00\x01\x00\x1E{\"min-bps\":[{\"bits\":1,\"x\":1}]}",                                   40},
+    "\x00\x03\x00\x28\x00\x00\x00\x01\x00\x1E{\"min-bps\":[{\"bits\":1,\"x\":1}]}"_cdat,
     // CloseStream message with extra data
-    {"\x00\x04\x00\x05\x00",                                                                                           5 },
+    "\x00\x04\x00\x05\x00"_cdat,
     // CloseStreamReply message with extra data
-    {"\x00\x05\x00\x05\x00",                                                                                           5 },
+    "\x00\x05\x00\x05\x00"_cdat,
     // CloseStreamNotify message with insufficient data
-    {"\x00\x06\x00\x07\x00\x00\x00",                                                                                   7 },
+    "\x00\x06\x00\x07\x00\x00\x00"_cdat,
     // SuspendStream message with insufficient data
-    {"\x00\x07\x00\x07\x00\x00\x00",                                                                                   7 },
+    "\x00\x07\x00\x07\x00\x00\x00"_cdat,
     // SuspendStream message with extra data
-    {"\x00\x07\x00\x09\x00\x00\x00\x00\x00",                                                                           9 },
+    "\x00\x07\x00\x09\x00\x00\x00\x00\x00"_cdat,
     // SuspendStreamReply message with insufficient data
-    {"\x00\x08\x00\x0B\x00\x00\x00\x00\x00\x00\x00",                                                                   11},
+    "\x00\x08\x00\x0B\x00\x00\x00\x00\x00\x00\x00"_cdat,
     // SuspendStreamReply message success code with extra data
-    {"\x00\x08\x00\x0D\x00\x00\x00\x00\x00\x00\x00\x00x",                                                              13},
+    "\x00\x08\x00\x0D\x00\x00\x00\x00\x00\x00\x00\x00x"_cdat,
     // SuspendStreamNotify message with insufficient data
-    {"\x00\x09\x00\x0B\x00\x00\x00\x00\x00\x00\x00",                                                                   11},
+    "\x00\x09\x00\x0B\x00\x00\x00\x00\x00\x00\x00"_cdat,
     // SuspendStreamNotify message with extra data
-    {"\x00\x09\x00\x0D\x00\x00\x00\x01\x00\x00\x00\x00\x00",                                                           13},
+    "\x00\x09\x00\x0D\x00\x00\x00\x01\x00\x00\x00\x00\x00"_cdat,
     // KeepAlive message with insufficient data
-    {"\x00\x0A\x00\x11\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00",                                   19},
+    "\x00\x0A\x00\x11\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"_cdat,
     // KeepAlive message with extra data
-    {"\x00\x0A\x00\x15\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00",                           21},
+    "\x00\x0A\x00\x15\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"_cdat,
     // KeepAliveReply message with insufficient data
-    {"\x00\x0B\x00\x0B\x00\x00\x00\x00\x00\x00\x00",                                                                   11},
+    "\x00\x0B\x00\x0B\x00\x00\x00\x00\x00\x00\x00"_cdat,
     // KeepAliveReply message success code with extra data
-    {"\x00\x0B\x00\x0D\x00\x00\x00\x00\x00\x00\x00\x00x",                                                              13},
+    "\x00\x0B\x00\x0D\x00\x00\x00\x00\x00\x00\x00\x00x"_cdat,
     // CapacityNotify message with insufficient data
-    {"\x00\x0C\x00\x07\x00\x00\x00",                                                                                   7 },
+    "\x00\x0C\x00\x07\x00\x00\x00"_cdat,
     // CapacityNotify message with extra data
-    {"\x00\x0C\x00\x09\x00\x00\x00\x00\x00",                                                                           9 },
+    "\x00\x0C\x00\x09\x00\x00\x00\x00\x00"_cdat,
     // KeyDataNotify message with insufficient data
-    {"\x00\x0D\x00\x06\x00\x01",                                                                                       6 },
+    "\x00\x0D\x00\x06\x00\x01"_cdat,
     // KeyDataNotify message with extra data (which isn't valid JSON)
-    {"\x00\x0D\x00\x0A\x00\x03\xF4\x13\x7A{",                                                                          10},
+    "\x00\x0D\x00\x0A\x00\x03\xF4\x13\x7A{"_cdat,
 };
 
 }  // namespace
