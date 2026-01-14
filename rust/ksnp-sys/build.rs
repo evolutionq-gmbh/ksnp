@@ -88,8 +88,8 @@ fn main() {
     };
 
     assert!(
-        version_major == 0 && version_minor == 1,
-        "Unsupported library version"
+        version_major == 0 && (version_minor == 1 || version_minor == 2),
+        "Unsupported library version {version_major}.{version_minor}"
     );
 
     let headers = [
