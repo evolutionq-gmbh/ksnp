@@ -68,6 +68,10 @@ auto ksnp_client::write_data(std::span<uint8_t> data) -> size_t
 
 auto ksnp_client::next_event() -> std::optional<client_event>
 {
+    if (this->stream_state == stream_state::error) {
+        return std::nullopt;
+    }
+
     while (true) {
         ksnp_message const *msg{};
         ksnp_protocol_error protocol_error{};

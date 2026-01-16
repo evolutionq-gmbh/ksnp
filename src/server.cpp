@@ -93,6 +93,9 @@ auto ksnp_server::write_data(std::span<uint8_t> data) -> size_t
 
 auto ksnp_server::next_event() -> std::optional<server_event>
 {
+    if (this->stream_state == stream_state::error) {
+        return std::nullopt;
+    }
     if (this->current_action) {
         // An action should have been performed.
         throw ksnp::exception(ksnp_error::KSNP_E_INVALID_OPERATION);
