@@ -7,6 +7,7 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/cmake")
 option(BUILD_EXAMPLES "Include the server and client example binaries" ON)
 option(BUILD_DOCS "Add a target for generating documentation using Doxygen" ON)
 option(BUILD_TEST "Add targets to build tests. Supported only if Boost is available" ON)
+option(BUILD_FUZZ_TEST "Add targets to build fuzz tests. Use together with toolchain for AFL compilers" OFF)
 
 include(GNUInstallDirs)
 
@@ -117,6 +118,17 @@ if (BUILD_TEST AND Boost_FOUND)
   target_include_directories(test_api PRIVATE ${CMAKE_CURRENT_LIST_DIR}/test)
   target_compile_features(test_api PRIVATE cxx_std_20)
 endif (BUILD_TEST AND Boost_FOUND)
+
+if (BUILD_FUZZ_TEST)
+  add_executable(fuzz-test
+    fuzzing/main.cpp
+  )
+  target_link_libraries(fuzz-test PRIVATE ksnp)
+  if (CMAKE_CXX_COMPILER_ID STREQUAL "Clang" OR CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    target_compile_options(fuzz-test PRIVATE -g -fsanitize=address -Wno-gnu-statement-expression-from-macro-expansion)
+    target_link_options(fuzz-test PRIVATE -fsanitize=address)
+  endif ()
+endif (BUILD_FUZZ_TEST)
 
 if (BUILD_EXAMPLES)
   add_executable(client examples/client_example.cpp)

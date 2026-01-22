@@ -84,3 +84,43 @@ the input. These can be any of the following:
 * `get <key-id>`: Get a key from the stream, with an optional key ID. The key ID
   is the index of the key chunk to retrieve.
 * `close`: Close the current key stream.
+
+Building and Running Tests for the Library
+------------------------------------------
+
+There are two kinds of tests for the library: a simple test suite and an entry
+point for fuzz testing. To build these, additional dependencies are required.
+
+The simple test suite requires that the [Boost](https://www.boost.org/)
+libraries are installed. If that is the case, and the CMake option BUILD_TEST is
+set to ON, the test suite is built alongside the library. To run it, simply
+execute
+
+```shell
+./build/test_api
+```
+
+For fuzz testing, first install [AFL++](https://aflplus.plus/). Because AFL
+needs instrumented binaries to work best, we use a different compiler for this
+build. Thus, we create a different CMake build directory:
+
+```shell
+cmake -S . -B build-fuzz -DCMAKE_TOOLCHAIN_FILE=cmake/AFL.cmake -DBUILD_FUZZ_TEST=ON
+cmake --build build-fuzz --target fuzz-test --parallel
+```
+
+Then run the fuzzer with a set of initial data:
+
+```shell
+afl-fuzz -i fuzzing/input -o /tmp/fuzz-output build-fuzz/fuzz-test
+```
+
+Note that you will likely need to adjust some settings on your system for AFL to
+work, or tell AFL to ignore suboptimal settings. A very common adjustment is to
+ignore suboptimal CPU scaling, which can be done by just setting the environment
+variable AFL_SKIP_CPUFREQ before running `afl-fuzz`.
+
+Note also that the fuzzer will run indefinitely unless interrupted. Stop it with
+^C once you're satisfied with the fuzzing attempt. Usually, this is once it has
+found at least one crash or once it ceases to regularly extend code coverage
+with newly generated inputs.
