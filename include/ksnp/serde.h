@@ -30,6 +30,9 @@ struct ksnp_message;
  *
  * A buffer will store intermediate message data that can be used by a message
  * context for message serialization and deserialization.
+ *
+ * Buffers may be limited in capacity, but must be able to hold a single
+ * complete message as specified by the @a KSNP_MAX_MSG_LEN constant.
  */
 struct ksnp_buffer {
     /// @brief Pointer to a function that returns the pointer to the start of
@@ -64,12 +67,18 @@ struct ksnp_buffer {
 
     /// @brief Pointer to a function that appends the given data to the buffer.
     ///
+    /// Depending on the capacity of the buffer, not all data may be appended,
+    /// and the buffer contents must be consumed or truncated to further append
+    /// data if so.
+    ///
     /// @param buffer The buffer to append data to.
     /// @param data Pointer to a buffer containing the data to append.
-    /// @param len Size of the buffer pointed to by @p data.
+    /// @param len [in/out] Size of the buffer pointed to by @p data. If this
+    /// function returns successfully, the number of bytes actually appended are
+    /// written here.
     /// @return @ref KSNP_E_NO_ERROR on success.
-    /// @return @ref KSNP_E_NO_MEM if the data cannot be wholly appended.
-    ksnp_error (*append)(struct ksnp_buffer *buffer, unsigned char const *data, size_t len) NOEXCEPT;
+    /// @return @ref KSNP_E_NO_MEM if no data could be appended.
+    ksnp_error (*append)(struct ksnp_buffer *buffer, unsigned char const *data, size_t *len) NOEXCEPT;
 
     /// @brief Pointer to a function that truncates the buffer.
     ///
@@ -114,6 +123,12 @@ struct ksnp_message_context;
  * @brief Create a new message context that can be used to serialize and
  * deserialize messages.
  *
+ * This message context uses its own buffers to store data to read and write (as
+ * handled via @ref ksnp_message_context_read_data() and @ref
+ * ksnp_message_context_write_data()). These buffers can grow indefinitely; to
+ * avoid unbounded growth use @ref ksnp_message_context_want_read() and @ref
+ * ksnp_message_context_want_write().
+ *
  * @param context [out] Pointer to a buffer to store the created message context
  * pointer. This pointer must later be freed using @ref
  * ksnp_message_context_destroy(). On error, NULL is written instead.
@@ -129,6 +144,9 @@ ksnp_error ksnp_message_context_create(struct ksnp_message_context **context) NO
  * The message context will read and write data using the provided buffer
  * objects. The caller may modify these buffers either directly, or using
  * ksnp_message_context_read_data() or ksnp_message_context_write_data().
+ *
+ * The provided buffers must be able to hold at least one message, see the @a
+ * KSNP_MAX_MSG_LEN constant.
  *
  * @param context [out] Pointer to a buffer to store the created message context
  * pointer. This pointer must later be freed using @ref
@@ -187,7 +205,8 @@ bool ksnp_message_context_want_read(struct ksnp_message_context *ctx) NOEXCEPT;
  * @param len [in,out] Pointer to the length value, which must match the length
  * of the input buffer @p data, or be set to 0. When 0, the @p data parameter
  * may be NULL. If this function returns successfully, the number of bytes
- * actually read are written to the length value, which may be 0.
+ * actually read are written to the length value, which may be less than the
+ * input if the associated buffer does not have sufficient capacity.
  * @return @ref KSNP_E_NO_ERROR on success.
  * @return Any of the values from the @ref ksnp_error enum on failure. On error, no
  * data will be added to the context.
@@ -225,7 +244,7 @@ bool ksnp_message_context_want_write(struct ksnp_message_context *ctx) NOEXCEPT;
  * @param data [out] Pointer to a buffer to write data to.
  * @param len [in,out] Pointer to the length value, which must match the length
  * of the output buffer. If this function returns successfully, the number of
- * bytes actually written are written to the length value, which may be 0.
+ * bytes actually written are written to the length value.
  * @return @ref KSNP_E_NO_ERROR on success.
  * @return Any of the values from the @ref ksnp_error enum on failure.
  */
@@ -277,8 +296,8 @@ NODISCARD ksnp_error ksnp_message_context_next_message(struct ksnp_message_conte
  * @param msg Pointer to a message to serialize.
  * @return @ref KSNP_E_NO_ERROR on success (though @p msg may still be set to
  * NULL).
- * @return Any of the values from the @ref ksnp_error enum on failure. On error, no
- * message data will be added to the context.
+ * @return Any of the values from the @ref ksnp_error enum on failure. On error,
+ * no message data will be added to the context.
  */
 NODISCARD ksnp_error ksnp_message_context_write_message(struct ksnp_message_context *ctx,
                                                         struct ksnp_message const   *msg) NOEXCEPT;

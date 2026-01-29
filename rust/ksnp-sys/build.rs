@@ -88,7 +88,7 @@ fn main() {
     };
 
     assert!(
-        version_major == 0 && (version_minor == 1 || version_minor == 2),
+        version_major == 0 && version_minor == 3,
         "Unsupported library version {version_major}.{version_minor}"
     );
 

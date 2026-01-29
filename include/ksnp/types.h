@@ -60,6 +60,9 @@ ENUM_TYPE(ksnp_error, unsigned int)
     KSNP_E_INVALID_MESSAGE_TYPE,
     /// @brief An event with an invalid type was used.
     KSNP_E_INVALID_EVENT_TYPE,
+    /// @brief The associated buffer is not large enough to hold sufficient
+    /// data.
+    KSNP_E_INSUFFICIENT_BUFFER,
 };
 
 /// @brief Concrete type for @ref ksnp_error.

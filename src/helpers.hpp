@@ -294,13 +294,16 @@ private:
         self->erase(self->begin(), self->begin() + static_cast<std::vector<unsigned char>::difference_type>(count));
     }
 
-    static auto append_fn(struct ksnp_buffer *buffer, unsigned char const *data, size_t len) noexcept -> ksnp_error
+    static auto append_fn(struct ksnp_buffer  *buffer,
+                          unsigned char const *data,
+                          size_t              *len) noexcept  // NOLINT(readability-non-const-parameter)
+        -> ksnp_error
     try {
         auto *self = static_cast<vector_buffer *>(buffer);
 #ifdef __clang__
 #pragma clang unsafe_buffer_usage begin
 #endif
-        self->insert(self->end(), data, data + len);
+        self->insert(self->end(), data, data + *len);
 #ifdef __clang__
 #pragma clang unsafe_buffer_usage end
 #endif

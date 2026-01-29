@@ -93,6 +93,8 @@ auto ksnp_error_description(ksnp_error error) -> char const *
         return "event type invalid";
     case ksnp_error::KSNP_E_CHUNK_SIZE_TOO_LARGE:
         return "chunk size too large";
+    case ksnp_error::KSNP_E_INSUFFICIENT_BUFFER:
+        return "buffer too small";
     default:
         return "unknown error";
     }

@@ -25,7 +25,7 @@ pub trait BufferImpl: Any + Unpin {
 
     fn consume(&mut self, count: usize);
 
-    fn append(&mut self, data: &[u8]) -> Result<(), ksnp_error>;
+    fn append(&mut self, data: &[u8]) -> Result<usize, ksnp_error>;
 
     fn truncate(&mut self, count: usize);
 }
@@ -107,16 +107,21 @@ impl<T: BufferImpl> Buffer<T> {
     extern "C" fn append(
         buffer: *mut sys::ksnp_buffer,
         data: *const c_uchar,
-        len: usize,
+        len: *mut usize,
     ) -> ksnp_error {
         // SAFETY: The buffer parameter points to an instance of Self::base, as
         // only the base's size method can call here.
         match unsafe { Self::buffer_to_self_mut(buffer) }
             .this
-            // SAFETY: The input buffer points to valid data.
-            .append(unsafe { slice::from_raw_parts(data, len) })
+            // SAFETY: The input buffer points to valid data and len is a valid
+            // readable pointer.
+            .append(unsafe { slice::from_raw_parts(data, len.read()) })
         {
-            Ok(()) => ksnp_error::KSNP_E_NO_ERROR,
+            Ok(count) => {
+                // SAFETY: len is a valid writeable pointer.
+                unsafe { len.write(count) };
+                ksnp_error::KSNP_E_NO_ERROR
+            }
             Err(e) => e,
         }
     }
@@ -171,12 +176,12 @@ impl BufferImpl for Vec<u8> {
         self.drain(..count);
     }
 
-    fn append(&mut self, data: &[u8]) -> Result<(), ksnp_error> {
+    fn append(&mut self, data: &[u8]) -> Result<usize, ksnp_error> {
         if self.try_reserve(data.len()).is_err() {
             return Err(ksnp_error::KSNP_E_NO_MEM);
         }
         self.extend_from_slice(data);
-        Ok(())
+        Ok(data.len())
     }
 
     fn truncate(&mut self, count: usize) {

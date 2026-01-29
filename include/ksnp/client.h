@@ -285,7 +285,8 @@ bool ksnp_client_want_read(struct ksnp_client const *client) NOEXCEPT;
  * @param len [in,out] Pointer to the length value, which must match the length
  * of the input buffer @p data. If this function returns successfully, the
  * number of bytes actually read are written to the length value, which may be
- * 0.
+ * less than the input if the buffer of the associated message context does not
+ * have sufficient capacity.
  * @return @ref KSNP_E_NO_ERROR on success.
  * @return Any of the values from the @ref ksnp_error enum on failure.
  */

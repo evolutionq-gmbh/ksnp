@@ -1,6 +1,11 @@
 Changelog
 =========
 
+Current
+-------
+
+* Change the buffer API to allow append to perform partial writes.
+
 Version 0.2
 -----------
 

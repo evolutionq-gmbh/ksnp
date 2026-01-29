@@ -72,7 +72,18 @@ public:
         this->buf->consume(this->buf, count);
     }
 
-    void append(unsigned char const *data, size_t len)
+    void append_exact(unsigned char const *data, size_t len)
+    {
+        auto written = len;
+        if (auto err = this->buf->append(this->buf, data, &written); err != ksnp_error::KSNP_E_NO_ERROR) {
+            throw exception(err);
+        }
+        if (len != written) {
+            throw exception(ksnp_error::KSNP_E_INSUFFICIENT_BUFFER);
+        }
+    }
+
+    void append(unsigned char const *data, size_t *len)
     {
         if (auto err = this->buf->append(this->buf, data, len); err != ksnp_error::KSNP_E_NO_ERROR) {
             throw exception(err);
@@ -624,7 +635,7 @@ private:
     void write_uint(T val)
     {
         auto bytes = uint_to_be(val);
-        this->output_data.append(bytes.data(), bytes.size());
+        this->output_data.append_exact(bytes.data(), bytes.size());
     }
 
     void write_u16(uint16_t val)
@@ -654,7 +665,7 @@ private:
         if (flag == json_ser_flag::with_length) {
             this->write_u16(static_cast<uint16_t>(json_len));
         }
-        this->output_data.append(reinterpret_cast<unsigned char const *>(json.data()), json.size());
+        this->output_data.append_exact(reinterpret_cast<unsigned char const *>(json.data()), json.size());
     }
 
     void write_message(char const *msg)
@@ -663,7 +674,7 @@ private:
             return;
         }
         std::string_view msg_view(msg);
-        this->output_data.append(reinterpret_cast<unsigned char const *>(msg_view.data()), msg_view.size());
+        this->output_data.append_exact(reinterpret_cast<unsigned char const *>(msg_view.data()), msg_view.size());
     }
 
     void write_parameters(ksnp_stream_open_params const *params)
@@ -992,8 +1003,13 @@ public:
             return ksnp_error::KSNP_E_NO_ERROR;
         }
 
-        this->input_data.append(data.data(), data.size());
         *read = data.size();
+        this->input_data.append(data.data(), read);
+        if (*read < data.size() && this->want_read()) {
+            // If the buffer is full and no message is ready, report an error
+            // as no progress can be made.
+            return ksnp_error::KSNP_E_INSUFFICIENT_BUFFER;
+        }
         return ksnp_error::KSNP_E_NO_ERROR;
     }
 
@@ -1266,8 +1282,8 @@ public:
                 write_u32(msg->suspend_stream_reply.timeout);
                 break;
             case ksnp_message_type::KSNP_MSG_KEEP_ALIVE_STREAM:
-                this->output_data.append(std::begin(msg->keep_alive_stream.key_stream_id),
-                                         sizeof(msg->keep_alive_stream.key_stream_id));
+                this->output_data.append_exact(std::begin(msg->keep_alive_stream.key_stream_id),
+                                               sizeof(msg->keep_alive_stream.key_stream_id));
                 break;
             case ksnp_message_type::KSNP_MSG_KEEP_ALIVE_STREAM_REPLY:
                 if (msg->keep_alive_stream_reply.code == ksnp_status_code::KSNP_STATUS_SUCCESS
@@ -1289,7 +1305,7 @@ public:
 #pragma clang unsafe_buffer_usage end
 #endif
                 write_u16(static_cast<uint16_t>(key_data.size()));
-                this->output_data.append(key_data.data(), key_data.size());
+                this->output_data.append_exact(key_data.data(), key_data.size());
                 if (msg->key_data_notify.parameters != nullptr) {
                     write_json(msg->key_data_notify.parameters, json_ser_flag::plain);
                 }
