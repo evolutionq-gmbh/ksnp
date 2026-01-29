@@ -103,6 +103,10 @@ if (BUILD_EXAMPLES)
   add_executable(server examples/server_example.cpp)
   target_link_libraries(server PRIVATE ksnp example_common)
   target_compile_features(server PRIVATE cxx_std_20)
+
+  add_executable(stream examples/stream.c)
+  target_link_libraries(stream PRIVATE ksnp LibUUID::LibUUID)
+  target_compile_features(stream PRIVATE c_std_23)
 endif (BUILD_EXAMPLES)
 
 if (BUILD_DOCS AND Doxygen_FOUND)

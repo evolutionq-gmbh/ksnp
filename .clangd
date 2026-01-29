@@ -13,6 +13,7 @@ CompileFlags:
     - -Wno-exit-time-destructors
     - -Wno-weak-vtables
     - -Wno-documentation
+    - -Wno-declaration-after-statement
     - -ferror-limit=0
 Diagnostics:
   ClangTidy:
