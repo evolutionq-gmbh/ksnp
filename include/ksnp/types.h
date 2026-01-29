@@ -23,7 +23,9 @@
 // cppcoreguidelines-macro-usage, performance-enum-size)
 
 /// @brief Maximum size of key chunks.
-static uint16_t const KSNP_MAX_CHUNK_SIZE = 1 << (UINT16_WIDTH - 1);
+///
+/// This 2^15, as to fit in a u16 with some room for message header data.
+static uint16_t const KSNP_MAX_CHUNK_SIZE = 1 << (16 - 1);
 
 /**
  * @enum ksnp_error
