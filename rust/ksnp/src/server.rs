@@ -6,13 +6,15 @@ use core::{
     time::Duration,
 };
 
+use ksnp_sys::ksnp_error;
 use uuid::Uuid;
 
 use crate::{
+    error::{Error, FailedReason, ProtocolError, check_err},
     message::MessageContext,
     processor::Processor,
-    sys::{self, ksnp_error},
-    types::{CloseDirection, StreamAcceptedParams, StreamOpenParams, StreamQosParams, map_err},
+    sys,
+    types::{CloseDirection, StreamAcceptedParams, StreamOpenParams, StreamQosParams},
 };
 
 /// Wrapper for a [`sys::ksnp_server`].
@@ -34,18 +36,15 @@ impl Drop for ServerConnection {
 impl<'ctx> ServerConnection {
     /// Creates a new [`sys::ksnp_server_connection`] wrapper with a new
     /// server_connection that uses the given [`MessageContext`].
-    pub fn new(ctx: MessageContext) -> Option<Self> {
+    pub fn new(ctx: MessageContext) -> Result<Self, Error> {
         let mut this = Self {
             ctx,
             server: null_mut(),
         };
         // SAFETY: server is a valid writeable pointer, and the message context
         // does not move its internal pointer.
-        if unsafe { sys::ksnp_server_create(&raw mut this.server, this.ctx.ctx) }.0 != 0 {
-            None
-        } else {
-            Some(this)
-        }
+        check_err(unsafe { sys::ksnp_server_create(&raw mut this.server, this.ctx.ctx) })?;
+        Ok(this)
     }
 
     /// Opens a new stream.
@@ -53,7 +52,7 @@ impl<'ctx> ServerConnection {
         &mut self,
         stream: &'ctx mut Stream<T>,
         params: &StreamAcceptedParams,
-    ) -> Result<(), ksnp_error> {
+    ) -> Result<(), Error> {
         // SAFETY: The pointers in the stream parameters stay valid for the
         // lifetime of the params arguments.
         let sys_params = unsafe { params.to_sys() };
@@ -62,7 +61,7 @@ impl<'ctx> ServerConnection {
         // valid long enough (with exclusive rights). Its stream pointer is
         // given directly to the server and not modified otherwise. The
         // parameters are a valid object on the stack.
-        map_err(unsafe {
+        check_err(unsafe {
             sys::ksnp_server_open_stream_ok(
                 self.server,
                 stream.stream_ptr_mut(),
@@ -82,7 +81,7 @@ impl<'ctx> ServerConnection {
         &mut self,
         stream: *mut Stream<T>,
         params: &StreamAcceptedParams,
-    ) -> Result<(), ksnp_error> {
+    ) -> Result<(), Error> {
         // SAFETY: The pointers in the stream parameters stay valid for the
         // lifetime of the params arguments.
         let sys_params = unsafe { params.to_sys() };
@@ -90,7 +89,7 @@ impl<'ctx> ServerConnection {
         // remain valid long enough. Its stream pointer is given directly to the
         // server and not modified otherwise. The parameters are a valid object
         // on the stack.
-        map_err(unsafe {
+        check_err(unsafe {
             sys::ksnp_server_open_stream_ok(
                 self.server,
                 stream.as_mut().unwrap().stream_ptr_mut(),
@@ -102,10 +101,10 @@ impl<'ctx> ServerConnection {
 
     pub fn open_stream_fail(
         &mut self,
-        reason: u32,
+        reason: FailedReason,
         params: Option<&StreamQosParams>,
         message: Option<&CStr>,
-    ) -> Result<(), ksnp_error> {
+    ) -> Result<(), Error> {
         let params = params.map(|p| {
             // SAFETY: The pointers in the stream parameters stay valid for the
             // lifetime of the params arguments.
@@ -113,10 +112,10 @@ impl<'ctx> ServerConnection {
         });
         // SAFETY: self.server is mutably accessible. Other pointers are valid
         // for the duration of this function.
-        map_err(unsafe {
+        check_err(unsafe {
             sys::ksnp_server_open_stream_fail(
                 self.server,
-                ksnp_sys::ksnp_status_code(reason),
+                reason.into(),
                 params.as_ref().map_or(null(), ptr::from_ref),
                 message.map_or(null(), CStr::as_ptr),
             )
@@ -124,11 +123,11 @@ impl<'ctx> ServerConnection {
         Ok(())
     }
 
-    pub fn suspend_stream_ok(&mut self, timeout: u32) -> Result<(), ksnp_error> {
+    pub fn suspend_stream_ok(&mut self, timeout: u32) -> Result<(), Error> {
         let mut stream = null_mut();
         // SAFETY: self.server is mutably accessible. The stream pointer is a
         // valid stack value.
-        map_err(unsafe {
+        check_err(unsafe {
             sys::ksnp_server_suspend_stream_ok(self.server, timeout, &raw mut stream)
         })?;
         Ok(())
@@ -136,55 +135,55 @@ impl<'ctx> ServerConnection {
 
     pub fn suspend_stream_fail(
         &mut self,
-        reason: u32,
+        reason: FailedReason,
         message: Option<&CStr>,
-    ) -> Result<(), ksnp_error> {
+    ) -> Result<(), Error> {
         // SAFETY: self.server is mutably accessible. Other pointers are valid
         // for the duration of this function.
-        map_err(unsafe {
+        check_err(unsafe {
             sys::ksnp_server_suspend_stream_fail(
                 self.server,
-                ksnp_sys::ksnp_status_code(reason),
+                reason.into(),
                 message.map_or(null(), CStr::as_ptr),
             )
         })?;
         Ok(())
     }
 
-    pub fn close_stream(&mut self) -> Result<*mut sys::ksnp_stream, ksnp_error> {
+    pub fn close_stream(&mut self) -> Result<Option<NonNull<sys::ksnp_stream>>, Error> {
         let mut stream = null_mut();
         // SAFETY: self.server is mutably accessible. The stream pointer is a
         // valid stack value.
-        map_err(unsafe { sys::ksnp_server_close_stream(self.server, &raw mut stream) })?;
-        Ok(stream)
+        check_err(unsafe { sys::ksnp_server_close_stream(self.server, &raw mut stream) })?;
+        Ok(NonNull::new(stream))
     }
 
-    pub fn server_keep_alive_ok(&mut self) -> Result<(), ksnp_error> {
+    pub fn keep_alive_ok(&mut self) -> Result<(), Error> {
         // SAFETY: self.server is mutably accessible.
-        map_err(unsafe { sys::ksnp_server_keep_alive_ok(self.server) })?;
+        check_err(unsafe { sys::ksnp_server_keep_alive_ok(self.server) })?;
         Ok(())
     }
 
-    pub fn server_keep_alive_fail(
+    pub fn keep_alive_fail(
         &mut self,
-        reason: u32,
+        reason: FailedReason,
         message: Option<&CStr>,
-    ) -> Result<(), ksnp_error> {
+    ) -> Result<(), Error> {
         // SAFETY: self.server is mutably accessible. Other pointers are valid
         // for the duration of this function.
-        map_err(unsafe {
+        check_err(unsafe {
             sys::ksnp_server_keep_alive_fail(
                 self.server,
-                ksnp_sys::ksnp_status_code(reason),
+                reason.into(),
                 message.map_or(null(), CStr::as_ptr),
             )
         })?;
         Ok(())
     }
 
-    pub fn close_connection(&mut self, dir: CloseDirection) -> Result<(), ksnp_error> {
+    pub fn close_connection(&mut self, dir: CloseDirection) -> Result<(), Error> {
         // SAFETY: server is a valid writeable pointer.
-        map_err(unsafe { sys::ksnp_server_close_connection(self.server, dir.into()) })?;
+        check_err(unsafe { sys::ksnp_server_close_connection(self.server, dir.into()) })?;
         Ok(())
     }
 }
@@ -202,7 +201,7 @@ pub trait StreamImpl {
     ///
     /// The max_count parameter determines how many chunks of key data may be
     /// returned. If [`None`], all chunks available may be returned.
-    fn next_chunk(&mut self, max_count: Option<NonZero<u16>>) -> Result<&[u8], ksnp_error>;
+    fn next_chunk(&mut self, max_count: Option<NonZero<u16>>) -> Result<&[u8], Error>;
 }
 
 // It is important the base member is the first member.
@@ -286,7 +285,7 @@ impl<T: StreamImpl> Stream<T> {
             .next_chunk(NonZero::new(max_count))
         {
             Ok(chunk) => chunk,
-            Err(e) => return e,
+            Err(e) => return e.into(),
         };
 
         // SAFETY: The data pointer points to a valid writeable object. The
@@ -337,36 +336,36 @@ impl Processor for ServerConnection {
         unsafe { sys::ksnp_server_want_write(self.server) }
     }
 
-    fn read_data(&mut self, data: &[u8]) -> Result<usize, ksnp_error> {
+    fn read_data(&mut self, data: &[u8]) -> Result<usize, Error> {
         let mut len = data.len();
         // SAFETY: self.server is valid for the lifetime of this wrapper, the
         // buffer and size pointers are derived from valid instances, len is
         // initialized properly.
-        map_err(unsafe { sys::ksnp_server_read_data(self.server, data.as_ptr(), &raw mut len) })?;
+        check_err(unsafe { sys::ksnp_server_read_data(self.server, data.as_ptr(), &raw mut len) })?;
         Ok(len)
     }
 
-    fn flush_data(&mut self) -> Result<(), ksnp_error> {
+    fn flush_data(&mut self) -> Result<(), Error> {
         // SAFETY: self.server is valid for the lifetime of this wrapper.
-        map_err(unsafe { sys::ksnp_server_flush_data(self.server) })
+        check_err(unsafe { sys::ksnp_server_flush_data(self.server) })
     }
 
-    fn write_data(&mut self, data: &mut [MaybeUninit<u8>]) -> Result<usize, ksnp_error> {
+    fn write_data(&mut self, data: &mut [MaybeUninit<u8>]) -> Result<usize, Error> {
         let mut len = data.len();
         // SAFETY: self.server is valid for the lifetime of this wrapper, the
         // buffer and size pointers are derived from valid instances, len is
         // initialized properly.
-        map_err(unsafe {
+        check_err(unsafe {
             sys::ksnp_server_write_data(self.server, data.as_mut_ptr().cast::<u8>(), &raw mut len)
         })?;
         Ok(len)
     }
 
-    fn next_event(&mut self) -> Result<Self::Value<'_>, ksnp_error> {
+    fn next_event(&mut self) -> Result<Self::Value<'_>, Error> {
         let mut event = MaybeUninit::uninit();
         // SAFETY: self.server is valid for the lifetime of this wrapper, the
         // event pointer is writeable.
-        map_err(unsafe { sys::ksnp_server_next_event(self.server, event.as_mut_ptr()) })?;
+        check_err(unsafe { sys::ksnp_server_next_event(self.server, event.as_mut_ptr()) })?;
         // SAFETY: On success the event is valid and assume_init can be called.
         // The event is valid for the current exclusive borrow of self, as it
         // prevents any other the other server methods from being called.
@@ -395,7 +394,7 @@ pub enum ServerEvent<'ctx> {
         current_capacity: u32,
     },
     Error {
-        code: u32,
+        code: ProtocolError,
         stream: Option<NonNull<sys::ksnp_stream>>,
     },
 }
@@ -464,7 +463,7 @@ impl From<sys::ksnp_server_event_new_capacity> for ServerEvent<'_> {
 impl From<sys::ksnp_server_event_error> for ServerEvent<'_> {
     fn from(value: sys::ksnp_server_event_error) -> Self {
         Self::Error {
-            code: value.code.0,
+            code: value.code.into(),
             stream: NonNull::new(value.stream),
         }
     }

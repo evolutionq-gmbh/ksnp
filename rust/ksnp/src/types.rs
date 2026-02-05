@@ -11,13 +11,6 @@ use uuid::Uuid;
 
 use crate::sys;
 
-pub(crate) fn map_err(err: sys::ksnp_error) -> Result<(), sys::ksnp_error> {
-    match err {
-        sys::ksnp_error(0) => Ok(()),
-        sys::ksnp_error(err) => Err(sys::ksnp_error(err)),
-    }
-}
-
 pub(crate) unsafe fn string_ref<'msg>(message: *const c_char) -> Option<&'msg CStr> {
     if message.is_null() {
         None

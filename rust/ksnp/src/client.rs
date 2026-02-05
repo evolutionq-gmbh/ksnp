@@ -3,13 +3,11 @@ use core::{ffi::CStr, mem::MaybeUninit, num::NonZero, ptr::null_mut, slice, time
 use uuid::Uuid;
 
 use crate::{
+    error::{Error, FailedReason, ProtocolError, StatusCode, check_err},
     message::MessageContext,
     processor::Processor,
-    sys::{self, ksnp_error},
-    types::{
-        CloseDirection, StreamAcceptedParams, StreamOpenParams, StreamQosParams, map_err,
-        string_ref,
-    },
+    sys,
+    types::{CloseDirection, StreamAcceptedParams, StreamOpenParams, StreamQosParams, string_ref},
 };
 
 /// Wrapper for a [`sys::ksnp_client`].
@@ -31,58 +29,55 @@ impl Drop for ClientConnection {
 impl ClientConnection {
     /// Creates a new [`sys::ksnp_client`] wrapper with a new
     /// client_connection that uses the given [`MessageContext`].
-    pub fn new(ctx: MessageContext) -> Option<Self> {
+    pub fn new(ctx: MessageContext) -> Result<Self, Error> {
         let mut this = Self {
             ctx,
             client: null_mut(),
         };
         // SAFETY: client is a valid writeable pointer, and the message context
         // does not move its internal pointer.
-        if unsafe { sys::ksnp_client_create(&raw mut this.client, this.ctx.ctx) }.0 != 0 {
-            None
-        } else {
-            Some(this)
-        }
+        check_err(unsafe { sys::ksnp_client_create(&raw mut this.client, this.ctx.ctx) })?;
+        Ok(this)
     }
 
-    pub fn open_stream(&mut self, parameters: &StreamOpenParams<'_>) -> Result<(), ksnp_error> {
+    pub fn open_stream(&mut self, parameters: &StreamOpenParams<'_>) -> Result<(), Error> {
         // SAFETY: The pointers in the parameters are only used for the duration
         // of this call.
         let parameters = unsafe { parameters.to_sys() };
         // SAFETY: client is a valid writeable pointer, and the parameters are
         // valid for the duration of this call.
-        map_err(unsafe { sys::ksnp_client_open_stream(self.client, &raw const parameters) })?;
+        check_err(unsafe { sys::ksnp_client_open_stream(self.client, &raw const parameters) })?;
         Ok(())
     }
 
-    pub fn close_stream(&mut self) -> Result<(), ksnp_error> {
+    pub fn close_stream(&mut self) -> Result<(), Error> {
         // SAFETY: client is a valid writeable pointer.
-        map_err(unsafe { sys::ksnp_client_close_stream(self.client) })?;
+        check_err(unsafe { sys::ksnp_client_close_stream(self.client) })?;
         Ok(())
     }
 
-    pub fn suspend_stream(&mut self, timeout: u32) -> Result<(), ksnp_error> {
+    pub fn suspend_stream(&mut self, timeout: u32) -> Result<(), Error> {
         // SAFETY: client is a valid writeable pointer.
-        map_err(unsafe { sys::ksnp_client_suspend_stream(self.client, timeout) })?;
+        check_err(unsafe { sys::ksnp_client_suspend_stream(self.client, timeout) })?;
         Ok(())
     }
 
-    pub fn add_capacity(&mut self, additional_capacity: u32) -> Result<(), ksnp_error> {
+    pub fn add_capacity(&mut self, additional_capacity: u32) -> Result<(), Error> {
         // SAFETY: client is a valid writeable pointer.
-        map_err(unsafe { sys::ksnp_client_add_capacity(self.client, additional_capacity) })?;
+        check_err(unsafe { sys::ksnp_client_add_capacity(self.client, additional_capacity) })?;
         Ok(())
     }
 
-    pub fn keep_alive(&mut self, stream_id: Uuid) -> Result<(), ksnp_error> {
+    pub fn keep_alive(&mut self, stream_id: Uuid) -> Result<(), Error> {
         // SAFETY: client is a valid writeable pointer. The stream id provides a
         // valid array.
-        map_err(unsafe { sys::ksnp_client_keep_alive(self.client, stream_id.as_bytes()) })?;
+        check_err(unsafe { sys::ksnp_client_keep_alive(self.client, stream_id.as_bytes()) })?;
         Ok(())
     }
 
-    pub fn close_connection(&mut self, dir: CloseDirection) -> Result<(), ksnp_error> {
+    pub fn close_connection(&mut self, dir: CloseDirection) -> Result<(), Error> {
         // SAFETY: client is a valid writeable pointer.
-        map_err(unsafe { sys::ksnp_client_close_connection(self.client, dir.into()) })?;
+        check_err(unsafe { sys::ksnp_client_close_connection(self.client, dir.into()) })?;
         Ok(())
     }
 }
@@ -111,36 +106,36 @@ impl Processor for ClientConnection {
         unsafe { sys::ksnp_client_want_write(self.client) }
     }
 
-    fn read_data(&mut self, data: &[u8]) -> Result<usize, ksnp_error> {
+    fn read_data(&mut self, data: &[u8]) -> Result<usize, Error> {
         let mut len = data.len();
         // SAFETY: self.client is valid for the lifetime of this wrapper, the
         // buffer and size pointers are derived from valid instances, len is
         // initialized properly.
-        map_err(unsafe { sys::ksnp_client_read_data(self.client, data.as_ptr(), &raw mut len) })?;
+        check_err(unsafe { sys::ksnp_client_read_data(self.client, data.as_ptr(), &raw mut len) })?;
         Ok(len)
     }
 
-    fn flush_data(&mut self) -> Result<(), ksnp_error> {
+    fn flush_data(&mut self) -> Result<(), Error> {
         // SAFETY: self.client is valid for the lifetime of this wrapper.
-        map_err(unsafe { sys::ksnp_client_flush_data(self.client) })
+        check_err(unsafe { sys::ksnp_client_flush_data(self.client) })
     }
 
-    fn write_data(&mut self, data: &mut [MaybeUninit<u8>]) -> Result<usize, ksnp_error> {
+    fn write_data(&mut self, data: &mut [MaybeUninit<u8>]) -> Result<usize, Error> {
         let mut len = data.len();
         // SAFETY: self.client is valid for the lifetime of this wrapper, the
         // buffer and size pointers are derived from valid instances, len is
         // initialized properly.
-        map_err(unsafe {
+        check_err(unsafe {
             sys::ksnp_client_write_data(self.client, data.as_mut_ptr().cast::<u8>(), &raw mut len)
         })?;
         Ok(len)
     }
 
-    fn next_event(&mut self) -> Result<Self::Value<'_>, ksnp_error> {
+    fn next_event(&mut self) -> Result<Self::Value<'_>, Error> {
         let mut event = MaybeUninit::uninit();
         // SAFETY: self.client is valid for the lifetime of this wrapper, the
         // event pointer is writeable.
-        map_err(unsafe { sys::ksnp_client_next_event(self.client, event.as_mut_ptr()) })?;
+        check_err(unsafe { sys::ksnp_client_next_event(self.client, event.as_mut_ptr()) })?;
         // SAFETY: On success the event is valid and assume_init can be called.
         // The event is valid for the current exclusive borrow of self, as it
         // prevents any other the other client methods from being called.
@@ -156,31 +151,31 @@ pub enum ClientEvent<'ctx> {
         parameters: StreamAcceptedParams<'ctx>,
     },
     OpenStreamFailed {
-        code: NonZero<u32>,
+        code: FailedReason,
         parameters: Option<StreamQosParams<'ctx>>,
         message: Option<&'ctx CStr>,
     },
     CloseStream {
-        code: u32,
+        code: StatusCode,
         message: Option<&'ctx CStr>,
     },
     SuspendStream {
         timeout: Duration,
     },
     SuspendStreamFailed {
-        code: NonZero<u32>,
+        code: FailedReason,
         message: Option<&'ctx CStr>,
     },
     KeepAlive,
     KeepAliveFailed {
-        code: NonZero<u32>,
+        code: FailedReason,
         message: Option<&'ctx CStr>,
     },
     KeyData {
         key_data: &'ctx [u8],
     },
     Error {
-        code: u32,
+        code: ProtocolError,
     },
 }
 
@@ -200,7 +195,7 @@ impl ClientEvent<'_> {
                 }),
             },
             Some(code) => Self::OpenStreamFailed {
-                code,
+                code: code.into(),
                 // SAFETY: A message with non-zero status has a no parameters or
                 // a qos object.
                 parameters: unsafe { value.parameters.qos.as_ref() }
@@ -220,7 +215,7 @@ impl ClientEvent<'_> {
     /// client event.
     unsafe fn from_stream_close(value: sys::ksnp_client_event_stream_close) -> Self {
         Self::CloseStream {
-            code: value.code.0,
+            code: value.code.into(),
             // SAFETY: The message pointer is valid for the lifetime of the
             // event.
             message: unsafe { string_ref(value.message) },
@@ -251,7 +246,7 @@ impl ClientEvent<'_> {
         match NonZero::new(value.code.0) {
             None => Self::KeepAlive,
             Some(code) => Self::KeepAliveFailed {
-                code,
+                code: code.into(),
                 // SAFETY: The message pointer is valid for the lifetime of the
                 // event.
                 message: unsafe { string_ref(value.message) },
@@ -275,7 +270,7 @@ impl From<sys::ksnp_client_event_stream_suspend> for ClientEvent<'_> {
                 timeout: Duration::from_secs(value.timeout.into()),
             },
             Some(code) => Self::SuspendStreamFailed {
-                code,
+                code: code.into(),
                 // SAFETY: The message pointer is valid for the lifetime of the
                 // event.
                 message: unsafe { string_ref(value.message) },
@@ -286,7 +281,9 @@ impl From<sys::ksnp_client_event_stream_suspend> for ClientEvent<'_> {
 
 impl From<sys::ksnp_client_event_error> for ClientEvent<'_> {
     fn from(value: sys::ksnp_client_event_error) -> Self {
-        Self::Error { code: value.code.0 }
+        Self::Error {
+            code: value.code.into(),
+        }
     }
 }
 

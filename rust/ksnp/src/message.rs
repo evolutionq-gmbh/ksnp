@@ -12,8 +12,9 @@ use core::{
 use uuid::Uuid;
 
 use crate::{
+    error::{Error, FailedReason, ProtocolError, StatusCode, check_err},
     sys::{self, ksnp_error},
-    types::{StreamAcceptedParams, StreamOpenParams, StreamQosParams, map_err, string_ref},
+    types::{StreamAcceptedParams, StreamOpenParams, StreamQosParams, string_ref},
 };
 
 pub trait BufferImpl: Any + Unpin {
@@ -25,7 +26,7 @@ pub trait BufferImpl: Any + Unpin {
 
     fn consume(&mut self, count: usize);
 
-    fn append(&mut self, data: &[u8]) -> Result<usize, ksnp_error>;
+    fn append(&mut self, data: &[u8]) -> Result<usize, Error>;
 
     fn truncate(&mut self, count: usize);
 }
@@ -122,7 +123,7 @@ impl<T: BufferImpl> Buffer<T> {
                 unsafe { len.write(count) };
                 ksnp_error::KSNP_E_NO_ERROR
             }
-            Err(e) => e,
+            Err(e) => e.into(),
         }
     }
 
@@ -176,9 +177,10 @@ impl BufferImpl for Vec<u8> {
         self.drain(..count);
     }
 
-    fn append(&mut self, data: &[u8]) -> Result<usize, ksnp_error> {
+    fn append(&mut self, data: &[u8]) -> Result<usize, Error> {
         if self.try_reserve(data.len()).is_err() {
-            return Err(ksnp_error::KSNP_E_NO_MEM);
+            // ASSERT: ksnp_error::KSNP_E_NO_MEM is a concrete error
+            return Err(Error::from_error(ksnp_error::KSNP_E_NO_MEM));
         }
         self.extend_from_slice(data);
         Ok(data.len())
@@ -213,19 +215,15 @@ impl MessageContext {
     /// The default read and write buffers are used for the message context.
     /// Therefore, data must be read and written using [`Self::read_data`] and
     /// [`Self::write_data`].
-    pub fn new() -> Option<Self> {
+    pub fn new() -> Result<Self, Error> {
         let mut ctx: *mut sys::ksnp_message_context = null_mut();
         // SAFETY: ctx is a valid writeable pointer.
-        unsafe { sys::ksnp_message_context_create(&raw mut ctx) };
-        if ctx.is_null() {
-            None
-        } else {
-            Some(Self {
-                ctx,
-                read_buffer: None,
-                write_buffer: None,
-            })
-        }
+        check_err(unsafe { sys::ksnp_message_context_create(&raw mut ctx) })?;
+        Ok(Self {
+            ctx,
+            read_buffer: None,
+            write_buffer: None,
+        })
     }
 
     /// Creates a new [`sys::ksnp_message_context`] wrapper with a new
@@ -237,29 +235,25 @@ impl MessageContext {
     pub fn with_buffers<T: BufferImpl + 'static, U: BufferImpl + 'static>(
         read_buffer: T,
         write_buffer: U,
-    ) -> Option<Self> {
+    ) -> Result<Self, Error> {
         let read_buffer = Box::pin(Buffer::new(read_buffer));
         let write_buffer = Box::pin(Buffer::new(write_buffer));
 
         let mut ctx: *mut sys::ksnp_message_context = null_mut();
         // SAFETY: ctx is a valid writeable pointer. The buffer pointers will
         // not move since they are contained by Arc.
-        unsafe {
+        check_err(unsafe {
             sys::ksnp_message_context_create_with_buffer(
                 &raw mut ctx,
                 read_buffer.buffer_ptr(),
                 write_buffer.buffer_ptr(),
             )
-        };
-        if ctx.is_null() {
-            None
-        } else {
-            Some(Self {
-                ctx,
-                read_buffer: Some(read_buffer),
-                write_buffer: Some(write_buffer),
-            })
-        }
+        })?;
+        Ok(Self {
+            ctx,
+            read_buffer: Some(read_buffer),
+            write_buffer: Some(write_buffer),
+        })
     }
 
     /// Gets a reference to the read buffer that was using when this context was
@@ -309,7 +303,7 @@ impl MessageContext {
     }
 
     /// Writes the given message into the write buffer used by the context.
-    pub fn write_message(&mut self, message: Message<'_>) -> Result<(), ksnp_error> {
+    pub fn write_message(&mut self, message: Message<'_>) -> Result<(), Error> {
         let mut scratch = None;
         // SAFETY: The pointers inside the message are valid for the duration of
         // this call, as the argument stays valid. The scratch space is not
@@ -317,7 +311,9 @@ impl MessageContext {
         let message = unsafe { message.try_to_sys(&mut scratch) }?;
         // SAFETY: The message and scratch space are valid for the duration of
         // this call and not modified.
-        map_err(unsafe { sys::ksnp_message_context_write_message(self.ctx, &raw const message) })?;
+        check_err(unsafe {
+            sys::ksnp_message_context_write_message(self.ctx, &raw const message)
+        })?;
         Ok(())
     }
 
@@ -336,12 +332,12 @@ impl MessageContext {
     /// Reads the given data into the read buffer.
     ///
     /// Returns the number of bytes read.
-    pub fn read_data(&mut self, data: &[u8]) -> Result<usize, ksnp_error> {
+    pub fn read_data(&mut self, data: &[u8]) -> Result<usize, Error> {
         let mut len = data.len();
         // SAFETY: self.ctx is valid for the lifetime of this wrapper, the
         // buffer and size pointers are derived from valid instances, len is
         // initialized properly.
-        map_err(unsafe {
+        check_err(unsafe {
             sys::ksnp_message_context_read_data(self.ctx, data.as_ptr(), &raw mut len)
         })?;
         Ok(len)
@@ -350,12 +346,12 @@ impl MessageContext {
     /// Writes the stored data into the given buffer.
     ///
     /// Returns the number of bytes written.
-    pub fn write_data(&mut self, data: &mut [MaybeUninit<u8>]) -> Result<usize, ksnp_error> {
+    pub fn write_data(&mut self, data: &mut [MaybeUninit<u8>]) -> Result<usize, Error> {
         let mut len = data.len();
         // SAFETY: self.ctx is valid for the lifetime of this wrapper, the
         // buffer and size pointers are derived from valid instances, len is
         // initialized properly.
-        map_err(unsafe {
+        check_err(unsafe {
             sys::ksnp_message_context_write_data(
                 self.ctx,
                 data.as_mut_ptr().cast::<u8>(),
@@ -366,7 +362,7 @@ impl MessageContext {
     }
 
     /// Returns the next message event, if any.
-    pub fn next_event(&mut self) -> Result<MessageResult<'_>, ksnp_error> {
+    pub fn next_event(&mut self) -> Result<MessageResult<'_>, Error> {
         let mut value = null();
         let mut protocol_error = sys::ksnp_protocol_error {
             code: sys::ksnp_error_code::KSNP_PROT_E_UNKNOWN_ERROR,
@@ -374,28 +370,30 @@ impl MessageContext {
         };
         // SAFETY: self.ctx is valid for the lifetime of this wrapper, the value
         // pointer is writeable.
-        match map_err(unsafe {
+        match unsafe {
             sys::ksnp_message_context_next_message(
                 self.ctx,
                 &raw mut value,
                 &raw mut protocol_error,
             )
-        }) {
-            Ok(()) => {
+        } {
+            ksnp_error::KSNP_E_NO_ERROR => {
                 // SAFETY: The pointer is valid until the underlying context is
                 // modified. The exclusive borrow on self ensures this.
                 let msg = MessageResult::from(unsafe { value.as_ref() }.map(Message::from));
                 Ok(msg)
             }
-            Err(ksnp_error::KSNP_E_PROTOCOL_ERROR) => {
+            ksnp_error::KSNP_E_PROTOCOL_ERROR => {
                 Ok(MessageResult::ProtocolError {
-                    code: protocol_error.code.0,
+                    code: protocol_error.code.into(),
                     // SAFETY: The description is valid as long as this context is
                     // not modified, which it can't due to the exclusive reference.
                     description: unsafe { string_ref(protocol_error.description) },
                 })
             }
-            Err(e) => Err(e),
+            // ASSERT: ksnp_error::KSNP_E_NO_ERROR is handled in the above
+            // branch
+            e => Err(Error::from_error(e)),
         }
     }
 }
@@ -403,7 +401,7 @@ impl MessageContext {
 #[derive(Debug)]
 pub enum Message<'ctx> {
     Error {
-        code: u32,
+        code: ProtocolError,
     },
     Version {
         minimum_version: u8,
@@ -416,14 +414,14 @@ pub enum Message<'ctx> {
         parameters: StreamAcceptedParams<'ctx>,
     },
     OpenStreamFailed {
-        code: NonZero<u32>,
+        code: FailedReason,
         parameters: Option<StreamQosParams<'ctx>>,
         message: Option<&'ctx CStr>,
     },
     CloseStream,
     CloseStreamReply,
     CloseStreamNotify {
-        code: u32,
+        code: sys::ksnp_status_code,
         message: Option<&'ctx CStr>,
     },
     SuspendStream {
@@ -433,11 +431,11 @@ pub enum Message<'ctx> {
         timeout: Duration,
     },
     SuspendStreamFailed {
-        code: NonZero<u32>,
+        code: FailedReason,
         message: Option<&'ctx CStr>,
     },
     SuspendStreamNotify {
-        code: u32,
+        code: StatusCode,
         timeout: Duration,
     },
     KeepAlive {
@@ -445,7 +443,7 @@ pub enum Message<'ctx> {
     },
     KeepAliveReply,
     KeepAliveFailed {
-        code: NonZero<u32>,
+        code: FailedReason,
         message: Option<&'ctx CStr>,
     },
     CapacityNotify {
@@ -461,7 +459,7 @@ pub enum MessageResult<'ctx> {
     None,
     Message(Message<'ctx>),
     ProtocolError {
-        code: u32,
+        code: ProtocolError,
         description: Option<&'ctx CStr>,
     },
 }
@@ -496,14 +494,12 @@ impl Message<'_> {
     pub(crate) unsafe fn try_to_sys(
         &self,
         scratch: &mut Option<StreamParams>,
-    ) -> Result<sys::ksnp_message, ksnp_error> {
+    ) -> Result<sys::ksnp_message, Error> {
         let msg = match self {
             &Self::Error { code } => sys::ksnp_message {
                 type_: sys::ksnp_message_type::KSNP_MSG_ERROR,
                 anon_1: sys::ksnp_message__bindgen_ty_1 {
-                    error: sys::ksnp_msg_error {
-                        code: ksnp_sys::ksnp_error_code(code),
-                    },
+                    error: sys::ksnp_msg_error { code: code.into() },
                 },
             },
             &Self::Version {
@@ -582,7 +578,7 @@ impl Message<'_> {
                     type_: sys::ksnp_message_type::KSNP_MSG_OPEN_STREAM_REPLY,
                     anon_1: sys::ksnp_message__bindgen_ty_1 {
                         open_stream_reply: sys::ksnp_msg_open_stream_reply {
-                            code: sys::ksnp_status_code(code.get()),
+                            code: (*code).into(),
                             message: message.map_or(null(), CStr::as_ptr),
                             parameters,
                         },
@@ -605,7 +601,7 @@ impl Message<'_> {
                 type_: sys::ksnp_message_type::KSNP_MSG_CLOSE_STREAM_NOTIFY,
                 anon_1: sys::ksnp_message__bindgen_ty_1 {
                     close_stream_notify: sys::ksnp_msg_close_stream_notify {
-                        code: sys::ksnp_status_code(code),
+                        code,
                         message: message.map_or(null(), CStr::as_ptr),
                     },
                 },
@@ -614,10 +610,11 @@ impl Message<'_> {
                 type_: sys::ksnp_message_type::KSNP_MSG_SUSPEND_STREAM,
                 anon_1: sys::ksnp_message__bindgen_ty_1 {
                     suspend_stream: sys::ksnp_msg_suspend_stream {
-                        timeout: timeout
-                            .as_secs()
-                            .try_into()
-                            .map_err(|_| ksnp_error::KSNP_E_INVALID_ARGUMENT)?,
+                        timeout: timeout.as_secs().try_into().map_err(|_| {
+                            // ASSERT: ksnp_error::KSNP_E_INVALID_ARGUMENT is a
+                            // concrete error.
+                            Error::try_from(ksnp_error::KSNP_E_INVALID_ARGUMENT).unwrap()
+                        })?,
                     },
                 },
             },
@@ -626,10 +623,11 @@ impl Message<'_> {
                 anon_1: sys::ksnp_message__bindgen_ty_1 {
                     suspend_stream_reply: sys::ksnp_msg_suspend_stream_reply {
                         code: sys::ksnp_status_code::KSNP_STATUS_SUCCESS,
-                        timeout: timeout
-                            .as_secs()
-                            .try_into()
-                            .map_err(|_| ksnp_error::KSNP_E_INVALID_ARGUMENT)?,
+                        timeout: timeout.as_secs().try_into().map_err(|_| {
+                            // ASSERT: ksnp_error::KSNP_E_INVALID_ARGUMENT is a
+                            // concrete error.
+                            Error::try_from(ksnp_error::KSNP_E_INVALID_ARGUMENT).unwrap()
+                        })?,
                         message: null(),
                     },
                 },
@@ -638,7 +636,7 @@ impl Message<'_> {
                 type_: sys::ksnp_message_type::KSNP_MSG_SUSPEND_STREAM_REPLY,
                 anon_1: sys::ksnp_message__bindgen_ty_1 {
                     suspend_stream_reply: sys::ksnp_msg_suspend_stream_reply {
-                        code: sys::ksnp_status_code(code.get()),
+                        code: code.into(),
                         timeout: 0,
                         message: message.map_or(null(), CStr::as_ptr),
                     },
@@ -648,11 +646,12 @@ impl Message<'_> {
                 type_: sys::ksnp_message_type::KSNP_MSG_SUSPEND_STREAM_NOTIFY,
                 anon_1: sys::ksnp_message__bindgen_ty_1 {
                     suspend_stream_notify: sys::ksnp_msg_suspend_stream_notify {
-                        code: sys::ksnp_status_code(code),
-                        timeout: timeout
-                            .as_secs()
-                            .try_into()
-                            .map_err(|_| ksnp_error::KSNP_E_INVALID_ARGUMENT)?,
+                        code: code.into(),
+                        timeout: timeout.as_secs().try_into().map_err(|_| {
+                            // ASSERT: ksnp_error::KSNP_E_INVALID_ARGUMENT is a
+                            // concrete error.
+                            Error::try_from(ksnp_error::KSNP_E_INVALID_ARGUMENT).unwrap()
+                        })?,
                     },
                 },
             },
@@ -677,7 +676,7 @@ impl Message<'_> {
                 type_: sys::ksnp_message_type::KSNP_MSG_KEEP_ALIVE_STREAM_REPLY,
                 anon_1: sys::ksnp_message__bindgen_ty_1 {
                     keep_alive_stream_reply: sys::ksnp_msg_keep_alive_stream_reply {
-                        code: sys::ksnp_status_code(code.get()),
+                        code: code.into(),
                         message: message.map_or(null(), CStr::as_ptr),
                     },
                 },
@@ -711,7 +710,9 @@ impl Message<'_> {
 
 impl From<&sys::ksnp_msg_error> for Message<'_> {
     fn from(value: &sys::ksnp_msg_error) -> Self {
-        Self::Error { code: value.code.0 }
+        Self::Error {
+            code: value.code.into(),
+        }
     }
 }
 
@@ -746,7 +747,7 @@ impl From<&sys::ksnp_msg_open_stream_reply> for Message<'_> {
                 }),
             },
             Some(code) => Self::OpenStreamFailed {
-                code,
+                code: code.into(),
                 // SAFETY: A message with non-zero status has a no parameters or
                 // a qos object.
                 parameters: unsafe { value.parameters.qos.as_ref() }
@@ -774,7 +775,7 @@ impl From<&sys::ksnp_msg_close_stream_reply> for Message<'_> {
 impl From<&sys::ksnp_msg_close_stream_notify> for Message<'_> {
     fn from(value: &sys::ksnp_msg_close_stream_notify) -> Self {
         Self::CloseStreamNotify {
-            code: value.code.0,
+            code: value.code,
             // SAFETY: The message pointer is valid for the lifetime of the
             // message.
             message: unsafe { string_ref(value.message) },
@@ -797,7 +798,7 @@ impl From<&sys::ksnp_msg_suspend_stream_reply> for Message<'_> {
                 timeout: Duration::from_secs(value.timeout.into()),
             },
             Some(code) => Self::SuspendStreamFailed {
-                code,
+                code: code.into(),
                 // SAFETY: The message pointer is valid for the lifetime of the
                 // message.
                 message: unsafe { string_ref(value.message) },
@@ -809,7 +810,7 @@ impl From<&sys::ksnp_msg_suspend_stream_reply> for Message<'_> {
 impl From<&sys::ksnp_msg_suspend_stream_notify> for Message<'_> {
     fn from(value: &sys::ksnp_msg_suspend_stream_notify) -> Self {
         Self::SuspendStreamNotify {
-            code: value.code.0,
+            code: value.code.into(),
             timeout: Duration::from_secs(value.timeout.into()),
         }
     }
@@ -828,7 +829,7 @@ impl From<&sys::ksnp_msg_keep_alive_stream_reply> for Message<'_> {
         match NonZero::new(value.code.0) {
             None => Self::KeepAliveReply,
             Some(code) => Self::KeepAliveFailed {
-                code,
+                code: code.into(),
                 // SAFETY: The message pointer is valid for the lifetime of the
                 // message.
                 message: unsafe { string_ref(value.message) },

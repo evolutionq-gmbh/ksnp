@@ -1,8 +1,8 @@
 use core::mem::MaybeUninit;
 
 use crate::{
+    error::Error,
     message::{BufferImpl, MessageContext},
-    sys::ksnp_error,
 };
 
 /// Trait for data processor types found in the KSNP library.
@@ -82,16 +82,16 @@ pub trait Processor {
     ///
     /// Returns the number of bytes read. [`Processor::next_event`] should be
     /// called as soon as possible.
-    fn read_data(&mut self, data: &[u8]) -> Result<usize, ksnp_error>;
+    fn read_data(&mut self, data: &[u8]) -> Result<usize, Error>;
 
     /// Flushes pending data to the write buffer.
-    fn flush_data(&mut self) -> Result<(), ksnp_error>;
+    fn flush_data(&mut self) -> Result<(), Error>;
 
     /// Writes egress data into the provided buffer.
     ///
     /// Returns the number of bytes written into the buffer.
-    fn write_data(&mut self, data: &mut [MaybeUninit<u8>]) -> Result<usize, ksnp_error>;
+    fn write_data(&mut self, data: &mut [MaybeUninit<u8>]) -> Result<usize, Error>;
 
     /// Processes input data.
-    fn next_event(&mut self) -> Result<Self::Value<'_>, ksnp_error>;
+    fn next_event(&mut self) -> Result<Self::Value<'_>, Error>;
 }
