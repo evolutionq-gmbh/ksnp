@@ -191,11 +191,12 @@ impl BufferImpl for Vec<u8> {
     }
 }
 
+type BufferPtr = Box<Buffer<dyn BufferImpl>>;
+
 /// Wrapper for a [`sys::ksnp_message_context`].
 pub struct MessageContext {
     pub(crate) ctx: *mut sys::ksnp_message_context,
-    read_buffer: Option<Pin<Box<Buffer<dyn BufferImpl>>>>,
-    write_buffer: Option<Pin<Box<Buffer<dyn BufferImpl>>>>,
+    buffers: Option<(Pin<BufferPtr>, Pin<BufferPtr>)>,
 }
 
 // SAFETY: The sys::ksnp_message_context can be moved across threads safely.
@@ -219,11 +220,7 @@ impl MessageContext {
         let mut ctx: *mut sys::ksnp_message_context = null_mut();
         // SAFETY: ctx is a valid writeable pointer.
         check_err(unsafe { sys::ksnp_message_context_create(&raw mut ctx) })?;
-        Ok(Self {
-            ctx,
-            read_buffer: None,
-            write_buffer: None,
-        })
+        Ok(Self { ctx, buffers: None })
     }
 
     /// Creates a new [`sys::ksnp_message_context`] wrapper with a new
@@ -251,55 +248,76 @@ impl MessageContext {
         })?;
         Ok(Self {
             ctx,
-            read_buffer: Some(read_buffer),
-            write_buffer: Some(write_buffer),
+            buffers: Some((read_buffer, write_buffer)),
         })
     }
 
-    /// Gets a reference to the read buffer that was using when this context was
+    /// Gets a reference to the read buffer that was used when this context was
     /// constructed.
     ///
     /// The resulting reference can be downcast to a concrete type using the
     /// [`Any`] trait.
     ///
-    /// If no read buffer was specified, returns None.
+    /// If no buffers were specified, returns None.
     pub fn read_buf(&self) -> Option<&dyn BufferImpl> {
-        self.read_buffer.as_deref().map(Buffer::buffer_impl)
+        self.buffers
+            .as_ref()
+            .map(|(read_buffer, _)| Buffer::buffer_impl(read_buffer))
     }
 
-    /// Gets a mutable reference to the read buffer that was using when this
+    /// Gets a mutable reference to the read buffer that was used when this
     /// context was constructed.
     ///
     /// The resulting reference can be downcast to a concrete type using the
     /// [`Any`] trait.
     ///
-    /// If no read buffer was specified, returns None.
+    /// If no buffers were specified, returns None.
     pub fn read_buf_mut(&mut self) -> Option<&mut dyn BufferImpl> {
-        self.read_buffer.as_deref_mut().map(Buffer::buffer_impl_mut)
+        self.buffers
+            .as_mut()
+            .map(|(read_buffer, _)| Buffer::buffer_impl_mut(read_buffer))
     }
 
-    /// Gets a reference to the write buffer that was using when this context
-    /// was constructed.
+    /// Gets a reference to the write buffer that was used when this context was
+    /// constructed.
     ///
     /// The resulting reference can be downcast to a concrete type using the
     /// [`Any`] trait.
     ///
-    /// If no write buffer was specified, returns None.
+    /// If no buffers were specified, returns None.
     pub fn write_buf(&self) -> Option<&dyn BufferImpl> {
-        self.write_buffer.as_deref().map(Buffer::buffer_impl)
+        self.buffers
+            .as_ref()
+            .map(|(_, write_buffer)| Buffer::buffer_impl(write_buffer))
     }
 
-    /// Gets a mutable reference to the write buffer that was using when this
+    /// Gets a mutable reference to the write buffer that was used when this
     /// context was constructed.
     ///
     /// The resulting reference can be downcast to a concrete type using the
     /// [`Any`] trait.
     ///
-    /// If no write buffer was specified, returns None.
+    /// If no buffers were specified, returns None.
     pub fn write_buf_mut(&mut self) -> Option<&mut dyn BufferImpl> {
-        self.write_buffer
-            .as_deref_mut()
-            .map(Buffer::buffer_impl_mut)
+        self.buffers
+            .as_mut()
+            .map(|(_, write_buffer)| Buffer::buffer_impl_mut(write_buffer))
+    }
+
+    /// Gets a mutable reference to the read and write buffers that were used
+    /// when this context was constructed.
+    ///
+    /// The resulting references can be downcast to concrete types using the
+    /// [`Any`] trait.
+    ///
+    /// If no buffers were specified, returns None.
+    pub fn buffers_mut(&mut self) -> Option<(&mut dyn BufferImpl, &mut dyn BufferImpl)> {
+        self.buffers.as_mut().map(|(read_buffer, write_buffer)| {
+            (
+                Buffer::buffer_impl_mut(read_buffer),
+                Buffer::buffer_impl_mut(write_buffer),
+            )
+        })
     }
 
     /// Writes the given message into the write buffer used by the context.

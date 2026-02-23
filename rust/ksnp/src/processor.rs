@@ -72,6 +72,25 @@ pub trait Processor {
             .and_then(|b| (b as &mut dyn core::any::Any).downcast_mut())
     }
 
+    /// Gets a mutable reference to the read and write buffers used by the
+    /// message context of this processor.
+    ///
+    /// Note that [`Processor::flush_data`] must be called before using the
+    /// write buffer to ensure all data to write is flushed to the buffer.
+    ///
+    /// If no buffers were specified when the message processor was created, or
+    /// they are of a different type, returns None.
+    fn buffers_mut<T: BufferImpl, U: BufferImpl>(&mut self) -> Option<(&mut T, &mut U)> {
+        if let Some((rb, wb)) = self.message_context_mut().buffers_mut()
+            && let Some(rb) = (rb as &mut dyn core::any::Any).downcast_mut()
+            && let Some(wb) = (wb as &mut dyn core::any::Any).downcast_mut()
+        {
+            Some((rb, wb))
+        } else {
+            None
+        }
+    }
+
     /// Returns true iff more data is required for further processing.
     fn want_read(&self) -> bool;
 
