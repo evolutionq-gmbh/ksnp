@@ -1,6 +1,7 @@
 use core::mem::MaybeUninit;
 
 use crate::{
+    CloseDirection,
     error::Error,
     message::{BufferImpl, MessageContext},
 };
@@ -113,4 +114,7 @@ pub trait Processor {
 
     /// Processes input data.
     fn next_event(&mut self) -> Result<Self::Value<'_>, Error>;
+
+    /// Close the connection with the other side in a particular direction.
+    fn close_connection(&mut self, dir: CloseDirection) -> Result<(), Error>;
 }

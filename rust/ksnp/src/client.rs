@@ -141,6 +141,11 @@ impl Processor for ClientConnection {
         // prevents any other the other client methods from being called.
         Ok(unsafe { ClientEvent::from_event(event.assume_init()) })
     }
+
+    fn close_connection(&mut self, dir: CloseDirection) -> Result<(), Error> {
+        // SAFETY: self.client is valid for the lifetime of this wrapper.
+        check_err(unsafe { sys::ksnp_client_close_connection(self.client, dir.into()) })
+    }
 }
 
 pub enum ClientEvent<'ctx> {

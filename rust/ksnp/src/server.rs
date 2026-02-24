@@ -371,6 +371,11 @@ impl Processor for ServerConnection {
         // prevents any other the other server methods from being called.
         Ok(unsafe { ServerEvent::from_event(event.assume_init()) })
     }
+
+    fn close_connection(&mut self, dir: CloseDirection) -> Result<(), Error> {
+        // SAFETY: self.server is valid for the lifetime of this wrapper.
+        check_err(unsafe { sys::ksnp_server_close_connection(self.server, dir.into()) })
+    }
 }
 
 pub enum ServerEvent<'ctx> {
