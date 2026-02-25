@@ -6,6 +6,7 @@ Current
 
 * Change the buffer API to allow append to perform partial writes.
 * When a client indicates EOF, the server will close the stream via an event.
+* To indicate write EOF, write_data or flush_data may yield empty buffers.
 
 Version 0.2
 -----------

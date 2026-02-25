@@ -20,6 +20,7 @@ private:
     std::optional<ksnp_protocol_version> version;
     stream_state                         stream_state;
     bool                                 in_shutdown;
+    bool                                 give_eof;
     uint32_t                             registered_capacity;
     uint16_t                             chunk_size;
 

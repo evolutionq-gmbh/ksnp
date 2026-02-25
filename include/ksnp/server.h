@@ -349,10 +349,17 @@ NODISCARD ksnp_error ksnp_server_read_data(struct ksnp_server *server, uint8_t c
  * becomes available during the initial handshake, after processing input data,
  * or after performing some stream operation.
  *
+ * This function also returns true if previously the connection was closed in
+ * the write direction, and no data needs to be sent to the client. In that case
+ * @ref ksnp_server_write_data() or @ref ksnp_server_flush_data() will result in
+ * empty buffers, and the outgoing connection should be closed.
+ *
  * @param server The server to check.
  * @return true if data is available for writing, and @ref
  * ksnp_server_write_data() or @ref ksnp_server_flush_data() should be called as
- * soon as the connection with the client is willing to accept it.
+ * soon as the connection with the client is willing to accept it, or when the
+ * outgoing connection is closing, in which case @ref ksnp_server_write_data()
+ * or @ref ksnp_server_flush_data() yield no data to write.
  * @return false if no data is available to be written.
  */
 bool ksnp_server_want_write(struct ksnp_server const *server) NOEXCEPT;
@@ -363,6 +370,9 @@ bool ksnp_server_want_write(struct ksnp_server const *server) NOEXCEPT;
  * This function can be used to flush data that should be written to the client
  * to the write buffer, without having to call @ref ksnp_server_write_data().
  * This is necessary when using a message context with custom buffers.
+ *
+ * If @ref ksnp_server_want_write() has returned true, but no data is in the
+ * buffer after calling this function, the outgoing connection can be closed.
  *
  * @param server The server to flush pending data for.
  * @return @ref KSNP_E_NO_ERROR on success.
@@ -384,7 +394,9 @@ NODISCARD ksnp_error ksnp_server_flush_data(struct ksnp_server *server) NOEXCEPT
  * @param data [out] Pointer to a buffer to write data to.
  * @param len [in,out] Pointer to the length value, which must match the length
  * of the output buffer. If this function returns successfully, the number of
- * bytes actually written are written to the length value, which may be 0.
+ * bytes actually written are written to the length value, which may be 0. A
+ * length of 0 indicates the outgoing connection can be closed if
+ * @ref ksnp_server_want_write() has returned true immediately beforehand.
  * @return @ref KSNP_E_NO_ERROR on success.
  * @return Any of the values from the @ref ksnp_error enum on failure.
  */
@@ -558,17 +570,20 @@ NODISCARD ksnp_error ksnp_server_keep_alive_fail(struct ksnp_server *server,
 /**
  * @brief Close the connection with the client in a particular direction.
  *
- * The read direction must be closed as soon as the server indicates it has
+ * The read direction must be closed as soon as the client indicates it has
  * closed the connection. If the read direction is closed, no further message
- * data will be accepted. The write direction must be closed as soon as
- * ksnp_server_next_event() returns no event and ksnp_server_want_write()
- * returns false.
+ * data will be accepted. The write direction should be closed when either the
+ * client has closed the connection and ksnp_server_next_event() returns no
+ * event, or when the server itself is stopping.
+ *
+ * If the read direction is closed, any active stream is closed and returned via
+ * the @ref server_event_close_stream event.
  *
  * If the write direction is closed, any ongoing event is cancelled. The server
  * will accept incoming data until the read direction is closed, but will not
- * generate any data to write. After calling this function, the outgoing
+ * generate any further data to write. After calling this function, the outgoing
  * connection must be closed as soon as @ref ksnp_server_want_write() returns
- * false.
+ * true and the write buffer is empty after flushing.
  *
  * @param server The server for which to close the connection.
  * @param dir The direction to close.

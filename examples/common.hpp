@@ -20,6 +20,7 @@
 #include <sstream>
 #include <string_view>
 #include <sys/poll.h>
+#include <sys/socket.h>
 #include <unistd.h>
 
 #include "helpers.hpp"
@@ -713,17 +714,22 @@ io_loop_start:
             // socket is blocked.
             while (!wait_write && conn.want_write()) {
                 conn.flush_data();
-                // Move data from the egress buffer to the socket.
-                auto count = ::write(*sock, write_buffer.data(), write_buffer.size());
-                if (count == -1) {
-                    if (errno != EWOULDBLOCK) {
-                        throw errno_exception(errno, "Failed to write to socket");
+                if (write_buffer.empty()) {
+                    // Close the outgoing connection.
+                    check_errno(::shutdown(*sock, SHUT_WR));
+                } else {
+                    // Move data from the egress buffer to the socket.
+                    auto count = ::write(*sock, write_buffer.data(), write_buffer.size());
+                    if (count == -1) {
+                        if (errno != EWOULDBLOCK) {
+                            throw errno_exception(errno, "Failed to write to socket");
+                        }
+                        wait_write = true;
+                        break;
                     }
-                    wait_write = true;
-                    break;
+                    assert(count > 0);
+                    write_buffer.erase(write_buffer.begin(), write_buffer.begin() + count);
                 }
-                assert(count > 0);
-                write_buffer.erase(write_buffer.begin(), write_buffer.begin() + count);
             }
 
             // Read all data from the socket until no further data is available,
@@ -747,8 +753,10 @@ io_loop_start:
                         read_buffer.resize(orig_len);
                         std::cout << "Remote closed the connection\n";
                         // If reading from the socket indicates EOF, inform the
-                        // client/server connection.
-                        conn.close_connection(ksnp_close_direction::KSNP_CLOSE_READ);
+                        // client/server connection. Note that closing the write
+                        // direction makes it easy to shut everything down, but
+                        // prevents the server from sending remaining key data.
+                        conn.close_connection(ksnp_close_direction::KSNP_CLOSE_BOTH);
                         break;
                     } else {
                         read_buffer.resize(orig_len + count);

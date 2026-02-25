@@ -18,6 +18,7 @@ ksnp_client::ksnp_client(ksnp_message_context *connection)
     : connection(connection)
     , stream_state(stream_state::closed)
     , in_shutdown(false)
+    , give_eof(false)
     , registered_capacity(0)
     , chunk_size(0)
 {
@@ -51,12 +52,17 @@ auto ksnp_client::read_data(std::span<uint8_t const> data) -> size_t
 
 auto ksnp_client::want_write() const noexcept -> bool
 {
-    return ::ksnp_message_context_want_write(this->connection);
+    return ::ksnp_message_context_want_write(this->connection) || this->give_eof;
 }
 
 void ksnp_client::flush_data()
 {
-    // Nothing to do
+    if (!::ksnp_message_context_want_write(this->connection) && this->give_eof) {
+        // If no data needs to be written by the context and give_eof is true,
+        // want_write returned true. A "flush" will clear the EOF flag so it
+        // does not get indicated twice.
+        this->give_eof = false;
+    }
 }
 
 auto ksnp_client::write_data(std::span<uint8_t> data) -> size_t
@@ -357,6 +363,7 @@ void ksnp_client::close_connection(ksnp_close_direction dir)
             throw exception(ksnp_error::KSNP_E_INVALID_OPERATION);
         }
         this->in_shutdown = true;
+        this->give_eof    = true;
     }
 }
 

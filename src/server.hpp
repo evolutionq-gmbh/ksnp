@@ -72,6 +72,7 @@ private:
     stream_state          stream_state;
     std::optional<action> current_action;
     bool                  in_shutdown;
+    bool                  give_eof;
 
 public:
     /**

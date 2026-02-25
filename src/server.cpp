@@ -24,6 +24,7 @@ ksnp_server::ksnp_server(ksnp_message_context *connection)
     , client_capacity(0)
     , stream_state(stream_state::closed)
     , in_shutdown(false)
+    , give_eof(false)
 {
     this->push_message(::ksnp_msg_version{.minimum_version = ksnp_protocol_version::PROTOCOL_V1,
                                           .maximum_version = ksnp_protocol_version::PROTOCOL_V1});
@@ -56,7 +57,8 @@ auto ksnp_server::want_write() const noexcept -> bool
 {
     return (::ksnp_message_context_want_write(this->connection)
             || (this->current_stream && this->client_capacity >= this->current_stream->chunk_size
-                && this->current_stream->has_chunk_available(*this->current_stream)));
+                && this->current_stream->has_chunk_available(*this->current_stream)))
+        || this->give_eof;
 }
 
 void ksnp_server::flush_data()
@@ -81,6 +83,13 @@ void ksnp_server::flush_data()
             this->push_message(ksnp_msg_key_data_notify{.key_data = chunk_data, .parameters = nullptr});
             this->client_capacity -= chunk_data.len;
         }
+    }
+
+    if (!::ksnp_message_context_want_write(this->connection) && this->give_eof) {
+        // If no data needs to be written by the context and give_eof is true,
+        // want_write returned true. A "flush" will clear the EOF flag so it
+        // does not get indicated twice.
+        this->give_eof = false;
     }
 }
 
@@ -404,6 +413,7 @@ void ksnp_server::close_connection(ksnp_close_direction dir)
             throw exception(ksnp_error::KSNP_E_INVALID_OPERATION);
         }
         this->in_shutdown    = true;
+        this->give_eof       = true;
         this->current_action = std::nullopt;
     }
 
