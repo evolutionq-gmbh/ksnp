@@ -148,6 +148,7 @@ impl Processor for ClientConnection {
     }
 }
 
+#[derive(Debug)]
 pub enum ClientEvent<'ctx> {
     Handshake {
         protocol: u8,

@@ -1,6 +1,7 @@
 use core::{
     any::Any,
     ffi::{CStr, c_uchar},
+    fmt,
     mem::MaybeUninit,
     num::NonZero,
     pin::Pin,
@@ -38,6 +39,17 @@ pub struct Buffer<T: ?Sized> {
     // safely be shared with a server.
     base: sys::ksnp_buffer,
     this: T,
+}
+
+impl<T: ?Sized> fmt::Debug for Buffer<T>
+where
+    T: fmt::Debug,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Buffer")
+            .field("base", &self.base)
+            .finish_non_exhaustive()
+    }
 }
 
 impl<T: BufferImpl> Buffer<T> {

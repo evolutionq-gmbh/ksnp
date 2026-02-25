@@ -443,6 +443,7 @@ impl<'evt> StreamQosParams<'evt> {
 }
 
 /// Direction in which a connection should be closed.
+#[derive(Debug, Eq, PartialEq)]
 pub enum CloseDirection {
     /// Close the read direction.
     Read,
