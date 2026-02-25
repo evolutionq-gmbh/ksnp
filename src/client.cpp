@@ -37,6 +37,11 @@ auto ksnp_client::read_data(std::span<uint8_t const> data) -> size_t
 {
 
     size_t len = data.size();
+    if (len == 0) {
+        this->close_connection(ksnp_close_direction::KSNP_CLOSE_READ);
+        return 0;
+    }
+
     if (auto res = ::ksnp_message_context_read_data(this->connection, data.data(), &len);
         res != ksnp_error::KSNP_E_NO_ERROR) {
         throw ksnp::exception(res);

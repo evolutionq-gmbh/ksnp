@@ -40,6 +40,11 @@ auto ksnp_server::want_read() const noexcept -> bool
 auto ksnp_server::read_data(std::span<uint8_t const> data) -> size_t
 {
     size_t len = data.size();
+    if (len == 0) {
+        this->close_connection(ksnp_close_direction::KSNP_CLOSE_READ);
+        return 0;
+    }
+
     if (auto res = ::ksnp_message_context_read_data(this->connection, data.data(), &len);
         res != ksnp_error::KSNP_E_NO_ERROR) {
         throw ksnp::exception(res);
@@ -99,6 +104,11 @@ auto ksnp_server::next_event() -> std::optional<server_event>
     if (this->current_action) {
         // An action should have been performed.
         throw ksnp::exception(ksnp_error::KSNP_E_INVALID_OPERATION);
+    }
+    if (this->stream_state == stream_state::closing && this->current_stream) {
+        return ksnp_server_event_close_stream{
+            .stream = this->current_stream.release(),
+        };
     }
 
     while (true) {
@@ -288,7 +298,9 @@ void ksnp_server::open_stream_fail(ksnp_status_code                     reason,
 
 auto ksnp_server::close_stream() -> ksnp_stream *
 {
-    if (this->stream_state != stream_state::open || this->current_action) {
+    if (!(this->stream_state == stream_state::open  // NOLINT: readability-simplify-boolean-expr
+          || (this->stream_state == stream_state::closing && this->current_stream))
+        || this->current_action) {
         throw ksnp::exception(ksnp_error::KSNP_E_INVALID_OPERATION);
     }
 
@@ -393,6 +405,10 @@ void ksnp_server::close_connection(ksnp_close_direction dir)
         }
         this->in_shutdown    = true;
         this->current_action = std::nullopt;
+    }
+
+    if (close_read && this->stream_state == stream_state::open) {
+        this->stream_state = stream_state::closing;
     }
 }
 
