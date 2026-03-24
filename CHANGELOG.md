@@ -1,8 +1,8 @@
 Changelog
 =========
 
-Current
--------
+Version 0.3
+-----------
 
 * Change the buffer API to allow append to perform partial writes.
 * When a client indicates EOF, the server will close the stream via an event.
