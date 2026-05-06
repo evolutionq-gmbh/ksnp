@@ -1,6 +1,5 @@
 #include <algorithm>
 #include <cassert>
-#include <climits>
 #include <compare>
 #include <concepts>
 #include <cstddef>
@@ -583,17 +582,17 @@ private:
     {
         this->parsed_json.reset();
 
-        if (json_len > data.size() || json_len > INT_MAX) {
-            throw ksnp::protocol_exception(ksnp_error_code::KSNP_PROT_E_BAD_JSON_LENGTH,
-                                           "JSON length exceeds message length");
+        // json_tokener_parse_ex reads the length as `int`.
+        if (json_len > data.size() || !std::in_range<int>(json_len)) {
+            throw ksnp::protocol_exception(ksnp_error_code::KSNP_PROT_E_BAD_JSON_LENGTH, "JSON length exceeds maximum");
         }
 
-        if (data.empty()) {
+        if (json_len == 0) {
             return nullptr;
         }
 
-        // Wrap the tokener in a unique_obj so it is properly freed in case of an
-        // exception.
+        // Wrap the tokener in a unique_obj so it is properly freed in case of
+        // an exception.
         unique_obj<json_tokener *, json_tokener_free> tok(json_tokener_new());
 
         auto const *data_ptr = data.data();

@@ -424,7 +424,7 @@ std::array<ksnp::message_t, 7> const bad_messages_ser = {
     ksnp_msg_keep_alive_stream_reply{.code = ksnp_status_code::KSNP_STATUS_SUCCESS, .message = test_string.c_str()},
 };
 
-std::array<const_data, 46> const bad_parser_input = {
+std::array<const_data, 45> const bad_parser_input = {
     // Invalid message size: smaller than header size
     "\x00\x00\x00\x03"_cdat,
     // Error message too short
@@ -463,8 +463,6 @@ std::array<const_data, 46> const bad_parser_input = {
     "\x00\x02\x00\x3A{\"destination\":{\"sae\":\"x\"},\"min-bps\":{\"bits\":1,\"x\":1}}"_cdat,
     // OpenStreamReply message; success with missing JSON
     "\x00\x03\x00\x0A\x00\x00\x00\x00\x00\x00"_cdat,
-    // OpenStreamReply message; error with missing JSON
-    "\x00\x03\x00\x1E\x00\x00\x00\x01\x00\x00something went wrong"_cdat,
     // OpenStreamReply message; error with JSON length exceeding remaining message length
     "\x00\x03\x00\x0C\x00\x00\x00\x01\x00\x03{}"_cdat,
     // OpenStreamReply message; success code with QoS parameter
