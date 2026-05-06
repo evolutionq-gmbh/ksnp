@@ -577,7 +577,7 @@ NODISCARD ksnp_error ksnp_server_keep_alive_fail(struct ksnp_server *server,
  * event, or when the server itself is stopping.
  *
  * If the read direction is closed, any active stream is closed and returned via
- * the @ref server_event_close_stream event.
+ * the @ref ksnp_server_event_close_stream event.
  *
  * If the write direction is closed, any ongoing event is cancelled. The server
  * will accept incoming data until the read direction is closed, but will not
