@@ -1,6 +1,11 @@
 Changelog
 =========
 
+Version 0.3.1
+-------------
+
+* Fix a bug in handling empty JSON payloads.
+
 Version 0.3
 -----------
 
