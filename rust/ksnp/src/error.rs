@@ -74,7 +74,12 @@ impl core::error::Error for ProtocolError {}
 
 impl fmt::Display for ProtocolError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(protocol_error_description(self.0))
+        match protocol_error_description(self.0) {
+            Some(desc) => f.write_str(desc),
+            None => {
+                write!(f, "unknown protocol error 0x{:x}", self.0.0)
+            }
+        }
     }
 }
 
@@ -111,7 +116,12 @@ pub struct StatusCode(sys::ksnp_status_code);
 
 impl fmt::Display for StatusCode {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(status_code_description(self.0))
+        match status_code_description(self.0) {
+            Some(desc) => f.write_str(desc),
+            None => {
+                write!(f, "unknown status code 0x{:x}", self.0.0)
+            }
+        }
     }
 }
 
@@ -154,7 +164,10 @@ impl core::error::Error for FailedReason {}
 
 impl fmt::Display for FailedReason {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(status_code_description(sys::ksnp_status_code(self.0.get())))
+        f.write_str(
+            status_code_description(sys::ksnp_status_code(self.0.get()))
+                .unwrap_or("unknown reason"),
+        )
     }
 }
 
@@ -215,21 +228,29 @@ pub fn error_description(err: sys::ksnp_error) -> &'static str {
 }
 
 /// Gets a description for a message status code.
-pub fn status_code_description(err: sys::ksnp_status_code) -> &'static str {
-    // SAFETY: KSNP will accept any status code as input, it is just that the
-    // output may not make sense if out of range.
+pub fn status_code_description(err: sys::ksnp_status_code) -> Option<&'static str> {
+    // SAFETY: KSNP will accept any status code as input, but returns NULL if
+    // it is not known.
     let str = unsafe { sys::ksnp_status_code_description(err) };
-    // ASSERT: KSNP status descriptions are valid UTF-8 (ASCII, even).
-    // SAFETY: KSNP will return valid static string pointers.
-    unsafe { CStr::from_ptr(str) }.to_str().unwrap()
+    if str.is_null() {
+        None
+    } else {
+        // ASSERT: KSNP status descriptions are valid UTF-8 (ASCII, even).
+        // SAFETY: KSNP will return valid static string pointers.
+        Some(unsafe { CStr::from_ptr(str) }.to_str().unwrap())
+    }
 }
 
 /// Gets a description for a protocol error.
-pub fn protocol_error_description(err: sys::ksnp_error_code) -> &'static str {
-    // SAFETY: KSNP will accept any protocol error code as input, it is just
-    // that the output may not make sense if out of range.
+pub fn protocol_error_description(err: sys::ksnp_error_code) -> Option<&'static str> {
+    // SAFETY: KSNP will accept any protocol error code as input, but returns
+    // NULL if it is not known.
     let str = unsafe { sys::ksnp_protocol_error_description(err) };
-    // ASSERT: KSNP protocol error descriptions are valid UTF-8 (ASCII, even).
-    // SAFETY: KSNP will return valid static string pointers.
-    unsafe { CStr::from_ptr(str) }.to_str().unwrap()
+    if str.is_null() {
+        None
+    } else {
+        // ASSERT: KSNP protocol error descriptions are valid UTF-8 (ASCII, even).
+        // SAFETY: KSNP will return valid static string pointers.
+        Some(unsafe { CStr::from_ptr(str) }.to_str().unwrap())
+    }
 }
