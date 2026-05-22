@@ -27,7 +27,7 @@ elseif (MSVC)
   add_compile_options(/W4)
 endif ()
 
-file(GENERATE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/ksnp/version.h"
+file(GENERATE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/include/ksnp/version.h"
   CONTENT "\
 /// @brief Major library version.
 ///
@@ -49,7 +49,7 @@ set(PUBLIC_HEADERS
   include/ksnp/serde.h
   include/ksnp/server.h
   include/ksnp/types.h
-  "${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/ksnp/version.h"
+  "${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/include/ksnp/version.h"
 )
 
 add_library(ksnp STATIC
@@ -64,7 +64,7 @@ add_library(ksnp STATIC
 )
 
 target_link_libraries(ksnp PUBLIC LibUUID::LibUUID json-c::json-c)
-target_include_directories(ksnp PUBLIC ${CMAKE_CURRENT_LIST_DIR}/include)
+target_include_directories(ksnp PUBLIC ${CMAKE_CURRENT_LIST_DIR}/include  "${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/include")
 target_include_directories(ksnp PRIVATE ${CMAKE_CURRENT_LIST_DIR}/src)
 target_compile_features(ksnp PUBLIC cxx_std_20)
 target_compile_features(ksnp PUBLIC c_std_23)
