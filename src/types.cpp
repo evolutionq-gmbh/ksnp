@@ -1,14 +1,4 @@
 #include "ksnp/types.h"
-#include "helpers.hpp"
-
-namespace ksnp
-{
-
-exception::~exception()                   = default;
-protocol_exception::~protocol_exception() = default;
-version_exception::~version_exception()   = default;
-
-}  // namespace ksnp
 
 auto ksnp_status_code_description(ksnp_status_code code) -> char const *
 {

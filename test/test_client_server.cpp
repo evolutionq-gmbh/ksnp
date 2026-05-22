@@ -1,6 +1,7 @@
 #include <cstddef>
 #include <cstring>
 #include <limits>
+#include <memory>
 #include <optional>
 
 #include <boost/test/unit_test.hpp>
@@ -8,9 +9,8 @@
 #include <json_types.h>
 
 #include "common.hpp"
-#include "helpers.hpp"
-#include "ksnp/client.h"
-#include "ksnp/server.h"
+#include "ksnp/client.hpp"
+#include "ksnp/server.hpp"
 #include "ksnp/types.h"
 #include "test_helpers.hpp"  // IWYU pragma: keep; false positive
 
@@ -21,19 +21,19 @@ using json_obj = ksnp::unique_obj<json_object *, json_object_put>;
 
 class connection
 {
-    std::unique_ptr<message_context_t> client_serde;
-    client_obj                         client_conn;
-    buffer                             write_buffer_client;
-    std::unique_ptr<message_context_t> server_serde;
-    server_obj                         server_conn;
-    buffer                             write_buffer_server;
+    std::unique_ptr<ksnp::message_context> client_serde;
+    ksnp::client                           client_conn;
+    buffer                                 write_buffer_client;
+    std::unique_ptr<ksnp::message_context> server_serde;
+    ksnp::server                           server_conn;
+    buffer                                 write_buffer_server;
 
 public:
     connection()
-        : client_serde(new message_context_t)
+        : client_serde(std::make_unique<ksnp::message_context>())
         , client_conn(*this->client_serde)
         , write_buffer_client(BUFFER_SIZE)
-        , server_serde(new message_context_t)
+        , server_serde(std::make_unique<ksnp::message_context>())
         , server_conn(*this->server_serde)
         , write_buffer_server(BUFFER_SIZE)
     {}
@@ -69,26 +69,26 @@ public:
     void complete_handshake()
     {
         this->complete_io();
-        this->client().next_event();
-        this->server().next_event();
+        (void)this->client().next_event();
+        (void)this->server().next_event();
     }
 
-    auto client() -> client_obj &
+    auto client() -> ksnp::client &
     {
         return this->client_conn;
     }
 
-    auto server() -> server_obj &
+    auto server() -> ksnp::server &
     {
         return this->server_conn;
     }
 
-    auto client_message_context() -> message_context_t &
+    auto client_message_context() -> ksnp::message_context &
     {
         return *this->client_serde;
     }
 
-    auto server_message_context() -> message_context_t &
+    auto server_message_context() -> ksnp::message_context &
     {
         return *this->server_serde;
     }
@@ -214,20 +214,20 @@ BOOST_AUTO_TEST_CASE(test_connection_server_events)
     ksnp_stream_open_params params{};
     params.destination = ksnp_address{.sae = "target", .network = nullptr};
 
-    BOOST_CHECK_NO_THROW(conn.client().open_stream(params));
+    BOOST_CHECK_NO_THROW(conn.client().open_stream(&params));
     conn.complete_io();
     BOOST_CHECK(conn.server().next_event()
                 == ksnp::server_event{::ksnp_server_event_open_stream{.parameters = &params}});
 
     // Cannot continue processing until the event is handled
-    BOOST_CHECK_EXCEPTION(conn.server().next_event(), ksnp_exception, [](ksnp_exception const &exc) -> bool {
-        return exc.error() == ksnp_error::KSNP_E_INVALID_OPERATION;
+    BOOST_CHECK_EXCEPTION((void)conn.server().next_event(), ksnp::exception, [](ksnp::exception const &exc) -> bool {
+        return exc.code() == ksnp_error::KSNP_E_INVALID_OPERATION;
     });
     // Cannot perform a different action
     BOOST_CHECK_EXCEPTION(conn.server().keep_alive_fail(ksnp_status_code::KSNP_STATUS_OPERATION_NOT_SUPPORTED, nullptr),
-                          ksnp_exception,
-                          [](ksnp_exception const &exc) -> bool {
-                              return exc.error() == ksnp_error::KSNP_E_INVALID_OPERATION;
+                          ksnp::exception,
+                          [](ksnp::exception const &exc) -> bool {
+                              return exc.code() == ksnp_error::KSNP_E_INVALID_OPERATION;
                           });
 
     // Send fail and wait for client event
@@ -244,9 +244,9 @@ BOOST_AUTO_TEST_CASE(test_connection_server_events)
     // Sending fail again should fail
     BOOST_CHECK_EXCEPTION(
         conn.server().open_stream_fail(ksnp_status_code::KSNP_STATUS_OPERATION_NOT_SUPPORTED, nullptr, nullptr),
-        ksnp_exception,
-        [](ksnp_exception const &exc) -> bool {
-            return exc.error() == ksnp_error::KSNP_E_INVALID_OPERATION;
+        ksnp::exception,
+        [](ksnp::exception const &exc) -> bool {
+            return exc.code() == ksnp_error::KSNP_E_INVALID_OPERATION;
         });
 }
 
@@ -262,18 +262,17 @@ BOOST_AUTO_TEST_CASE(test_connection_client_over_capacity)
     params.capacity    = std::numeric_limits<uint32_t>::max();
     params.min_bps     = ksnp_rate{.bits = 1, .seconds = 0};
 
-    BOOST_CHECK_NO_THROW(conn.client().open_stream(params));
+    BOOST_CHECK_NO_THROW(conn.client().open_stream(&params));
 
     conn.complete_io();
     BOOST_CHECK(conn.server().next_event()
                 == ksnp::server_event{::ksnp_server_event_open_stream{.parameters = &params}});
 
     // Send accept
-    ksnp::unique_obj<struct ksnp_stream *, ksnp_simple_stream_destroy> stream;
-    check_error(ksnp_simple_stream_create(&stream.get(), params.chunk_size));
+    auto                        stream = std::make_unique<ksnp::simple_stream>(params.chunk_size);
     ksnp_stream_accepted_params accept_params{};
     accept_params.min_bps = ksnp_rate{.bits = 1, .seconds = 0};
-    BOOST_CHECK_NO_THROW(conn.server().open_stream_ok(stream.get(), accept_params));
+    BOOST_CHECK_NO_THROW(conn.server().open_stream_ok(stream->as_stream_ptr(), &accept_params));
     conn.complete_io();
 
     // Check accept event
@@ -285,11 +284,11 @@ BOOST_AUTO_TEST_CASE(test_connection_client_over_capacity)
     BOOST_CHECK(conn.client().next_event() == ksnp::client_event{event});
 
     // Any additional capacity must be rejected
-    BOOST_CHECK_EXCEPTION(conn.client().add_capacity(1), ksnp_exception, [](auto const &exc) -> bool {
-        return exc.error() == ksnp_error::KSNP_E_INVALID_ARGUMENT;
+    BOOST_CHECK_EXCEPTION(conn.client().add_capacity(1), ksnp::exception, [](auto const &exc) -> bool {
+        return exc.code() == ksnp_error::KSNP_E_INVALID_ARGUMENT;
     });
 
-    ksnp::message capacity_message{::ksnp_msg_capacity_notify{.additional_capacity = 1}};
+    ksnp::message capacity_message(::ksnp_msg_capacity_notify{.additional_capacity = 1});
     conn.client_message_context().write_message(capacity_message);
     conn.complete_io();
     auto server_event = ksnp::server_event{
@@ -327,17 +326,16 @@ BOOST_AUTO_TEST_CASE(test_connection_client_chunk_size)
     params.capacity    = std::numeric_limits<uint32_t>::max();
     params.min_bps     = ksnp_rate{.bits = 1, .seconds = 0};
 
-    BOOST_CHECK_NO_THROW(conn.client().open_stream(params));
+    BOOST_CHECK_NO_THROW(conn.client().open_stream(&params));
     conn.complete_io();
     BOOST_CHECK(conn.server().next_event()
                 == ksnp::server_event{::ksnp_server_event_open_stream{.parameters = &params}});
 
     // Send accept
-    ksnp::unique_obj<struct ksnp_stream *, ksnp_simple_stream_destroy> stream;
-    check_error(ksnp_simple_stream_create(&stream.get(), params.chunk_size));
+    auto                        stream = std::make_unique<ksnp::simple_stream>(params.chunk_size);
     ksnp_stream_accepted_params accept_params{};
     accept_params.min_bps = ksnp_rate{.bits = 1, .seconds = 0};
-    BOOST_CHECK_NO_THROW(conn.server().open_stream_ok(stream.get(), accept_params));
+    BOOST_CHECK_NO_THROW(conn.server().open_stream_ok(stream->as_stream_ptr(), &accept_params));
     conn.complete_io();
 
     // Check accept event
@@ -350,16 +348,13 @@ BOOST_AUTO_TEST_CASE(test_connection_client_chunk_size)
 
     // Derive key data from a fixed buffer
     std::vector<unsigned char> key_source(BUFFER_SIZE, KEY_DATA_VALUE);
-    ksnp_data                  key_data{.data = key_source.data(), .len = 0};
 
     // Nothing to write on insufficent key data
-    key_data.len = CHUNK_SIZE - 1;
-    check_error(ksnp_simple_stream_add_key_data(*stream, key_data));
+    stream->add_key_data(std::span{key_source}.subspan(0, CHUNK_SIZE - 1));
     BOOST_CHECK(!conn.server().want_write());
 
     // Write a single chunk
-    key_data.len = 1;
-    check_error(ksnp_simple_stream_add_key_data(*stream, key_data));
+    stream->add_key_data(std::span{key_source}.subspan(CHUNK_SIZE - 1, 1));
     BOOST_CHECK(conn.server().want_write());
     conn.complete_io();
     auto key_event = ::ksnp_client_event_key_data{
@@ -369,8 +364,7 @@ BOOST_AUTO_TEST_CASE(test_connection_client_chunk_size)
     BOOST_CHECK(conn.client().next_event() == ksnp::client_event{key_event});
 
     // Write multiple and partial chunk, expect multiple complete chunks
-    key_data.len = (2 * CHUNK_SIZE) + (CHUNK_SIZE / 2);
-    check_error(ksnp_simple_stream_add_key_data(*stream, key_data));
+    stream->add_key_data(std::span{key_source}.subspan(0, (2 * CHUNK_SIZE) + (CHUNK_SIZE / 2)));
     conn.complete_io();
     key_event.key_data.len = static_cast<size_t>(CHUNK_SIZE);
     BOOST_CHECK(conn.client().next_event() == ksnp::client_event{key_event});
@@ -378,8 +372,8 @@ BOOST_AUTO_TEST_CASE(test_connection_client_chunk_size)
     BOOST_CHECK(conn.client().next_event() == ksnp::client_event{key_event});
 
     // Finalize last chunk
-    key_data.len = CHUNK_SIZE - (CHUNK_SIZE / 2);
-    check_error(ksnp_simple_stream_add_key_data(*stream, key_data));
+    stream->add_key_data(
+        std::span{key_source}.subspan((2 * CHUNK_SIZE) + (CHUNK_SIZE / 2), CHUNK_SIZE - (CHUNK_SIZE / 2)));
     conn.complete_io();
     key_event.key_data.len = static_cast<size_t>(CHUNK_SIZE);
     BOOST_CHECK(conn.client().next_event() == ksnp::client_event{key_event});

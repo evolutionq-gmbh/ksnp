@@ -6,6 +6,7 @@
  * @brief Common types and function for the client and server examples.
  */
 
+#include <algorithm>
 #include <cassert>
 #include <cerrno>
 #include <concepts>
@@ -13,6 +14,7 @@
 #include <cstdint>
 #include <cstring>
 #include <iostream>
+#include <memory>
 #include <netdb.h>
 #include <optional>
 #include <source_location>
@@ -23,19 +25,20 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
-#include "client.hpp"
-#include "ksnp/client.h"
 #include "ksnp/messages.h"
-#include "ksnp/serde.h"
-#include "ksnp/server.h"
+#include "ksnp/serde.hpp"
 #include "ksnp/types.h"
-#include "serde.hpp"
-#include "server.hpp"
+#include "ksnp/types.hpp"
 
 /// @brief Size of key chunks used by the examples.
 static uint16_t const CHUNK_SIZE = 32;
 
 static size_t const EXCEPTION_BUFFER_SIZE = 512;
+
+template<class... Ts>
+struct overloads : Ts... {
+    using Ts::operator()...;
+};
 
 /**
  * @brief Exception that may be thrown as a result of some error code indicating
@@ -113,36 +116,11 @@ public:
  * @brief Exception that may be thrown as a result of some key stream operation
  * returning an error.
  */
-class ksnp_exception : public error_code_exception<ksnp_error, ksnp_error_description>
-{
-public:
-    using error_code_exception::error_code_exception;
-};
-
-/**
- * @brief Exception that may be thrown as a result of some key stream operation
- * returning an error.
- */
 class ksnp_status_exception : public error_code_exception<ksnp_status_code, ksnp_status_code_description>
 {
 public:
     using error_code_exception::error_code_exception;
 };
-
-/**
- * @brief Check if the result of an API call is an error, and throw an exception
- * if so.
- *
- * @param err Error value to check.
- * @param location Location where the check is performed, defaults to the call
- * site.
- */
-inline void check_error(ksnp_error err, std::source_location const &location = std::source_location::current())
-{
-    if (err != ksnp_error::KSNP_E_NO_ERROR) {
-        throw ksnp_exception(err, nullptr, location);
-    }
-}
 
 /**
  * @brief Exception that may be thrown as a result of `errno` being nonzero.
@@ -193,10 +171,6 @@ public:
 template<typename T>
 concept IoProcessor =
     requires(T impl, std::span<unsigned char const> cdata, std::span<unsigned char> data, ksnp_close_direction dir) {
-        typename T::result_type;
-
-        { std::constructible_from<bool, typename T::result_type const &> };
-
         { impl.want_read() } -> std::same_as<bool>;
 
         { impl.want_write() } -> std::same_as<bool>;
@@ -207,241 +181,10 @@ concept IoProcessor =
 
         { impl.write_data(data) } -> std::convertible_to<size_t>;
 
-        { impl.next_event() } -> std::same_as<typename T::result_type>;
+        { impl.next_event() };
 
         { impl.close_connection(dir) } -> std::same_as<void>;
     };
-
-/**
- * @brief Wrapper for message_context.
- */
-class message_context_t : public ksnp::unique_obj<ksnp_message_context *, ksnp_message_context_destroy>
-{
-public:
-    using result_type = std::optional<ksnp::message>;
-
-    message_context_t() : unique_obj(nullptr)
-    {
-        check_error(ksnp_message_context_create(&this->get()));
-    }
-
-    message_context_t(ksnp_buffer *read_buffer, ksnp_buffer *write_buffer) : unique_obj(nullptr)
-    {
-        check_error(ksnp_message_context_create_with_buffer(&this->get(), read_buffer, write_buffer));
-    }
-
-    auto want_read() -> bool
-    {
-        return ::ksnp_message_context_want_read(**this);
-    }
-
-    auto want_write() -> bool
-    {
-        return ::ksnp_message_context_want_write(**this);
-    }
-
-    auto read_data(std::span<unsigned char const> data) -> size_t
-    {
-        size_t len = data.size();
-        check_error(::ksnp_message_context_read_data(**this, data.data(), &len));
-        return len;
-    }
-
-    auto write_data(std::span<unsigned char> data) -> size_t
-    {
-        size_t len = data.size();
-        check_error(::ksnp_message_context_write_data(**this, data.data(), &len));
-        return len;
-    }
-
-    auto next_event() -> result_type
-    {
-        ksnp_message        msg{};
-        ksnp_protocol_error protocol_error{};
-        if (auto err = ::ksnp_message_context_next_message(**this, &msg, &protocol_error);
-            err != ksnp_error::KSNP_E_NO_ERROR) {
-            if (err == ksnp_error::KSNP_E_PROTOCOL_ERROR) {
-                throw ksnp::protocol_exception(protocol_error);
-            }
-            throw ksnp_exception(err);
-        }
-        return ksnp::message::from_message(msg);
-    }
-
-    void write_message(ksnp::message const &msg)
-    {
-        auto raw_message = msg.into_message();
-        check_error(::ksnp_message_context_write_message(**this, &raw_message));
-    }
-};
-
-class client_obj : public ksnp::unique_obj<ksnp_client *, ksnp_client_destroy>
-{
-public:
-    using result_type = std::optional<ksnp::client_event>;
-
-    explicit client_obj(message_context_t &ctx) : unique_obj(nullptr)
-    {
-        check_error(ksnp_client_create(&this->get(), ctx.get()));
-    }
-
-    auto want_read() -> bool
-    {
-        return ::ksnp_client_want_read(**this);
-    }
-
-    auto want_write() -> bool
-    {
-        return ::ksnp_client_want_write(**this);
-    }
-
-    auto read_data(std::span<unsigned char const> data) -> size_t
-    {
-        size_t len = data.size();
-        check_error(::ksnp_client_read_data(**this, data.data(), &len));
-        return len;
-    }
-
-    void flush_data()
-    {
-        check_error(::ksnp_client_flush_data(**this));
-    }
-
-    auto write_data(std::span<unsigned char> data) -> size_t
-    {
-        size_t len = data.size();
-        check_error(::ksnp_client_write_data(**this, data.data(), &len));
-        return len;
-    }
-
-    auto next_event() -> result_type
-    {
-        ksnp_client_event evt{};
-        check_error(::ksnp_client_next_event(**this, &evt));
-        return ksnp::client_event::from_event(evt);
-    }
-
-    void open_stream(struct ksnp_stream_open_params const &params)
-    {
-        check_error(::ksnp_client_open_stream(**this, &params));
-    }
-
-    void close_stream()
-    {
-        check_error(::ksnp_client_close_stream(**this));
-    }
-
-    void suspend_stream(uint32_t timeout)
-    {
-        check_error(::ksnp_client_suspend_stream(**this, timeout));
-    }
-
-    void add_capacity(uint32_t additional_capacity)
-    {
-        check_error(::ksnp_client_add_capacity(**this, additional_capacity));
-    }
-
-    void close_connection(ksnp_close_direction dir)
-    {
-        check_error(::ksnp_client_close_connection(**this, dir));
-    }
-};
-
-class server_obj : public ksnp::unique_obj<ksnp_server *, ksnp_server_destroy>
-{
-public:
-    using result_type = std::optional<ksnp::server_event>;
-
-    explicit server_obj(message_context_t &ctx) : unique_obj(nullptr)
-    {
-        check_error(ksnp_server_create(&this->get(), ctx.get()));
-    }
-
-    auto want_read() -> bool
-    {
-        return ::ksnp_server_want_read(**this);
-    }
-
-    auto want_write() -> bool
-    {
-        return ::ksnp_server_want_write(**this);
-    }
-
-    auto read_data(std::span<unsigned char const> data) -> size_t
-    {
-        size_t len = data.size();
-        check_error(::ksnp_server_read_data(**this, data.data(), &len));
-        return len;
-    }
-
-    void flush_data()
-    {
-        check_error(::ksnp_server_flush_data(**this));
-    }
-
-    auto write_data(std::span<unsigned char> data) -> size_t
-    {
-        size_t len = data.size();
-        check_error(::ksnp_server_write_data(**this, data.data(), &len));
-        return len;
-    }
-
-    auto next_event() -> result_type
-    {
-        ksnp_server_event evt{};
-        check_error(::ksnp_server_next_event(**this, &evt));
-        return ksnp::server_event::from_event(evt);
-    }
-
-    auto get_stream() -> ksnp_stream *
-    {
-        return ::ksnp_server_current_stream(**this);
-    }
-
-    void open_stream_ok(struct ksnp_stream *stream, struct ksnp_stream_accepted_params const &params)
-    {
-        check_error(::ksnp_server_open_stream_ok(**this, stream, &params));
-    }
-
-    void open_stream_fail(ksnp_status_code reason, struct ksnp_stream_qos_params const *params, char const *message)
-    {
-        check_error(::ksnp_server_open_stream_fail(**this, reason, params, message));
-    }
-
-    auto close_stream() -> struct ksnp_stream *
-    {
-        struct ksnp_stream *stream = nullptr;
-        check_error(::ksnp_server_close_stream(**this, &stream));
-        return stream;
-    }
-
-    auto suspend_stream_ok(uint32_t timeout) -> ksnp_stream *
-    {
-        struct ksnp_stream *stream = nullptr;
-        check_error(::ksnp_server_suspend_stream_ok(**this, timeout, &stream));
-        return stream;
-    }
-
-    void suspend_stream_fail(ksnp_status_code reason, char const *message)
-    {
-        check_error(::ksnp_server_suspend_stream_fail(**this, reason, message));
-    }
-
-    void keep_alive_ok()
-    {
-        check_error(::ksnp_server_keep_alive_ok(**this));
-    }
-
-    auto keep_alive_fail(ksnp_status_code reason, char const *message)
-    {
-        check_error(::ksnp_server_keep_alive_fail(**this, reason, message));
-    }
-
-    void close_connection(ksnp_close_direction dir)
-    {
-        check_error(::ksnp_server_close_connection(**this, dir));
-    }
-};
 
 /**
  * @brief Wrapper for file descriptors.
@@ -657,14 +400,17 @@ class connection_handler
     ksnp::vector_buffer read_buffer;
     ksnp::vector_buffer write_buffer;
 
-    message_context_t msg_context;
-    T                 conn;
+    std::unique_ptr<ksnp::message_context> msg_context;
+    T                                      conn;
 
 public:
+    using result_type = decltype(std::declval<T &>().next_event());
+
     explicit connection_handler(fd sock)
         : sock(std::move(sock))
-        , msg_context(this->read_buffer.as_buffer_ptr(), this->write_buffer.as_buffer_ptr())
-        , conn(T(this->msg_context))
+        , msg_context(std::make_unique<ksnp::message_context>(this->read_buffer.as_buffer_ptr(),
+                                                              this->write_buffer.as_buffer_ptr()))
+        , conn(T(*this->msg_context))
     {
         this->read_buffer.reserve(KSNP_MAX_MSG_LEN);
         this->write_buffer.reserve(KSNP_MAX_MSG_LEN);
@@ -697,7 +443,7 @@ public:
      */
     auto
     next_event(std::optional<unsigned int> timeout = std::nullopt)  // NOLINT(readability-function-cognitive-complexity)
-        -> typename T::result_type
+        -> result_type
     {
         // Track if some read or write operation is blocked on socket I/O. Note
         // that these values persist across I/O loop iterations.
@@ -849,5 +595,5 @@ protected:
      * @return false If the event could not be processed and needs to be
      * forwarded.
      */
-    virtual auto process_event(typename T::result_type &evt) -> bool = 0;
+    virtual auto process_event(result_type &evt) -> bool = 0;
 };

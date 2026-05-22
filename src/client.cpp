@@ -5,14 +5,13 @@
 
 #include <json-c/json_types.h>
 
-#include "client.hpp"
 #include "helpers.hpp"
 #include "ksnp/client.h"
+#include "ksnp/client.hpp"
 #include "ksnp/messages.h"
 #include "ksnp/serde.h"
 #include "ksnp/types.h"
-
-using namespace ksnp;
+#include "ksnp/types.hpp"
 
 namespace ksnp
 {

@@ -8,7 +8,6 @@
 #include <json-c/json_types.h>
 
 #include "common.hpp"
-#include "helpers.hpp"
 #include "ksnp/types.h"
 #include "test_helpers.hpp"
 
@@ -20,7 +19,7 @@ BOOST_AUTO_TEST_SUITE(test_message_context)
 
 BOOST_AUTO_TEST_CASE(test_message_context_basics)
 {
-    message_context_t                      ctx;
+    ksnp::message_context                  ctx;
     std::array<unsigned char, BUFFER_SIZE> write_buffer{};
     ksnp::message const                    version_message = ksnp_msg_version{
                            .minimum_version = ksnp_protocol_version::PROTOCOL_V1,
@@ -31,7 +30,7 @@ BOOST_AUTO_TEST_CASE(test_message_context_basics)
     // An empty context needs input, has no output
     BOOST_TEST(ctx.want_read());
     BOOST_TEST(!ctx.want_write());
-    BOOST_TEST(!ctx.next_event().has_value());
+    BOOST_TEST(!ctx.next_message().has_value());
     BOOST_TEST(ctx.write_data({write_buffer}) == 0);
 
     ctx.write_message(version_message);
@@ -44,7 +43,7 @@ BOOST_AUTO_TEST_CASE(test_message_context_basics)
     // available.
     BOOST_TEST(ctx.read_data({version_data}) == 6);
     BOOST_TEST(!ctx.want_read());
-    auto next_message = ctx.next_event();
+    auto next_message = ctx.next_message();
     BOOST_REQUIRE(next_message.has_value());
     BOOST_CHECK(*next_message == version_message);
 
@@ -56,7 +55,7 @@ BOOST_AUTO_TEST_CASE(test_message_context_basics)
 
 BOOST_AUTO_TEST_CASE(test_message_context_multiple)
 {
-    message_context_t                      ctx;
+    ksnp::message_context                  ctx;
     std::array<unsigned char, BUFFER_SIZE> write_buffer{};
     ksnp::message const                    version_message = ksnp_msg_version{
                            .minimum_version = ksnp_protocol_version::PROTOCOL_V1,
@@ -87,17 +86,17 @@ BOOST_AUTO_TEST_CASE(test_message_context_multiple)
     BOOST_TEST(ctx.read_data({version_data}) == 6);
     BOOST_TEST(!ctx.want_read());
 
-    auto next_message = ctx.next_event();
+    auto next_message = ctx.next_message();
     BOOST_TEST(next_message.has_value());
     BOOST_CHECK(*next_message == version_message);
     BOOST_TEST(!ctx.want_read());
 
-    next_message = ctx.next_event();
+    next_message = ctx.next_message();
     BOOST_TEST(next_message.has_value());
     BOOST_CHECK(*next_message == version_message);
     BOOST_TEST(!ctx.want_read());
 
-    next_message = ctx.next_event();
+    next_message = ctx.next_message();
     BOOST_TEST(next_message.has_value());
     BOOST_CHECK(*next_message == version_message);
     BOOST_TEST(ctx.want_read());
@@ -105,7 +104,7 @@ BOOST_AUTO_TEST_CASE(test_message_context_multiple)
 
 BOOST_AUTO_TEST_CASE(test_message_context_partial_read)
 {
-    message_context_t                  ctx;
+    ksnp::message_context              ctx;
     std::array<unsigned char, 6> const version_data{0, 1, 0, 6, 1, 1};
 
     // Write single bytes, no message should be available until the last one was
@@ -113,12 +112,12 @@ BOOST_AUTO_TEST_CASE(test_message_context_partial_read)
     for (auto byte: std::span(version_data).first(5)) {
         BOOST_TEST(ctx.read_data({&byte, 1}) == 1);
         BOOST_TEST(ctx.want_read());
-        BOOST_TEST(!ctx.next_event().has_value());
+        BOOST_TEST(!ctx.next_message().has_value());
     }
 
     BOOST_TEST(ctx.read_data(std::span(version_data).subspan(5)) == 1);
     BOOST_TEST(!ctx.want_read());
-    BOOST_TEST(ctx.next_event().has_value());
+    BOOST_TEST(ctx.next_message().has_value());
     BOOST_TEST(ctx.want_read());
 
     // Write a complete and partial message. One should complete immediately,
@@ -126,18 +125,18 @@ BOOST_AUTO_TEST_CASE(test_message_context_partial_read)
     BOOST_TEST(ctx.read_data({version_data}) == 6);
     BOOST_TEST(ctx.read_data(std::span{version_data}.first(5)) == 5);
 
-    BOOST_TEST(ctx.next_event().has_value());
+    BOOST_TEST(ctx.next_message().has_value());
     BOOST_TEST(ctx.want_read());
-    BOOST_TEST(!ctx.next_event().has_value());
+    BOOST_TEST(!ctx.next_message().has_value());
     BOOST_TEST(ctx.read_data(std::span{version_data}.subspan(5)) == 1);
     BOOST_TEST(!ctx.want_read());
-    BOOST_TEST(ctx.next_event().has_value());
+    BOOST_TEST(ctx.next_message().has_value());
     BOOST_TEST(ctx.want_read());
 }
 
 BOOST_AUTO_TEST_CASE(test_message_context_partial_write)
 {
-    message_context_t                      ctx;
+    ksnp::message_context                  ctx;
     std::array<unsigned char, BUFFER_SIZE> write_buffer{};
     ksnp::message const                    version_message = ksnp_msg_version{
                            .minimum_version = ksnp_protocol_version::PROTOCOL_V1,
@@ -168,7 +167,7 @@ BOOST_AUTO_TEST_CASE(test_message_context_partial_write)
 namespace
 {
 
-ksnp::zstring_view const test_string = "abcdefghijkl"_zsv;
+std::string const test_string = "abcdefghijkl";  // NOLINT cert-err58-cpp
 
 json_ptr const test_extension{[]() noexcept -> struct json_object * {  // NOLINT cert-err58-cpp
     static constexpr int magic_val = 42;
@@ -516,7 +515,7 @@ std::array<const_data, 47> const bad_parser_input = {
 
 BOOST_DATA_TEST_CASE(test_serde_rt, boost::unit_test::data::make(good_messages), message)
 {
-    message_context_t                      ctx;
+    ksnp::message_context                  ctx;
     std::array<unsigned char, BUFFER_SIZE> write_mem{};
     std::span<unsigned char>               write_buffer = {write_mem};
 
@@ -527,28 +526,28 @@ BOOST_DATA_TEST_CASE(test_serde_rt, boost::unit_test::data::make(good_messages),
     auto written = ctx.write_data(write_buffer);
     BOOST_REQUIRE(ctx.read_data(write_buffer.first(written)) == written);
 
-    auto next_message = ctx.next_event();
+    auto next_message = ctx.next_message();
     BOOST_TEST(next_message.has_value());
     BOOST_CHECK(*next_message == message);
 }
 
 BOOST_DATA_TEST_CASE(test_serializer_bad_input, boost::unit_test::data::make(bad_messages_ser), message)
 {
-    message_context_t ctx;
+    ksnp::message_context ctx;
 
     BOOST_REQUIRE(ctx.want_read());
     BOOST_REQUIRE(!ctx.want_write());
 
-    BOOST_CHECK_THROW(ctx.write_message(message), ksnp_exception);
+    BOOST_CHECK_THROW(ctx.write_message(message), ksnp::exception);
 }
 
 BOOST_DATA_TEST_CASE(test_parser_bad_input, boost::unit_test::data::make(bad_parser_input), input)
 {
-    message_context_t ctx;
+    ksnp::message_context ctx;
 
     BOOST_REQUIRE(ctx.read_data(input) == input.size());
 
-    BOOST_CHECK_THROW(ctx.next_event(), ksnp::protocol_exception);
+    BOOST_CHECK_THROW(ctx.next_message(), ksnp::protocol_exception);
 }
 
 BOOST_AUTO_TEST_SUITE_END()

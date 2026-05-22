@@ -19,12 +19,9 @@
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <uuid/uuid.h>
-#include <vector>
 
 #include "common.hpp"
-#include "helpers.hpp"
-#include "ksnp/server.h"
-#include "ksnp/types.h"
+#include "ksnp/server.hpp"
 
 /**
  * @brief Implementation of a server connection.
@@ -33,19 +30,19 @@
  * state, instead it simply sends mock replies. For key data, it sends all 0
  * data.
  */
-class server : private connection_handler<server_obj>
+class server : private connection_handler<ksnp::server>
 {
 public:
     using connection_handler::connection_handler;
     using connection_handler::next_event;
 
 protected:
-    auto process_event(server_obj::result_type &event) -> bool override;
+    auto process_event(result_type &event) -> bool override;
 };
 
-auto server::process_event(server_obj::result_type &event) -> bool
+auto server::process_event(result_type &event) -> bool
 {
-    auto const visitor = ksnp::overloads{
+    auto const visitor = overloads{
         [this](ksnp_server_event_open_stream &evt) -> bool {
             std::cout << "Open stream request\n";
 
@@ -65,13 +62,11 @@ auto server::process_event(server_obj::result_type &event) -> bool
                 return true;
             }
 
-            ::ksnp_stream *stream;
-            check_error(ksnp_simple_stream_create(&stream, CHUNK_SIZE));
+            auto *stream = new ksnp::simple_stream(CHUNK_SIZE);
 
             if (evt.parameters->capacity > 0) {
                 std::vector<unsigned char> data(evt.parameters->capacity, 'a');
-                check_error(
-                    ksnp_simple_stream_add_key_data(stream, ::ksnp_data{.data = data.data(), .len = data.size()}));
+                stream->add_key_data(data);
             }
 
             ksnp_stream_accepted_params params = {
@@ -89,12 +84,12 @@ auto server::process_event(server_obj::result_type &event) -> bool
                 uuid_copy(std::begin(params.stream_id), std::begin(evt.parameters->stream_id));
             }
             std::cout << "Opened stream\n";
-            this->connection().open_stream_ok(stream, params);
+            this->connection().open_stream_ok(stream->as_stream_ptr(), &params);
             return true;
         },
         [](ksnp_server_event_close_stream &evt) -> bool {
             std::cout << "Close stream request\n";
-            ksnp_simple_stream_destroy(evt.stream);
+            delete ksnp::simple_stream::from_stream_ptr(evt.stream);
             return true;
         },
         [this](ksnp_server_event_suspend_stream &) -> bool {
@@ -111,12 +106,12 @@ auto server::process_event(server_obj::result_type &event) -> bool
             std::cout << "New capacity: " << evt.current_capacity << "\n";
             auto                      *stream = this->connection().get_stream();
             std::vector<unsigned char> data(evt.additional_capacity, 'a');
-            check_error(ksnp_simple_stream_add_key_data(stream, ::ksnp_data{.data = data.data(), .len = data.size()}));
+            ksnp::simple_stream::from_stream_ptr(stream)->add_key_data(data);
             return true;
         },
         [](ksnp_server_event_error &evt) -> bool {
             if (evt.stream != nullptr) {
-                ksnp_simple_stream_destroy(evt.stream);
+                delete ksnp::simple_stream::from_stream_ptr(evt.stream);
             }
             std::cerr << "Protocol error: ";
             if (evt.description != nullptr) {

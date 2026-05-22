@@ -20,11 +20,9 @@
 #include <uuid/uuid.h>
 
 #include "helpers.hpp"
-#include "ksnp/messages.h"
 #include "ksnp/serde.h"
-
+#include "ksnp/serde.hpp"
 #include "ksnp/types.h"
-#include "serde.hpp"
 
 #ifndef JSON_C_OBJECT_ADD_CONSTANT_KEY
 // Support for legacy JSON-C versions.
@@ -166,6 +164,7 @@ auto message::from_message(::ksnp_message msg) -> std::optional<message>
 
 namespace
 {
+
 using namespace ksnp;
 
 constexpr zstring_view json_key_ksid                = "key-stream-id"_zsv;

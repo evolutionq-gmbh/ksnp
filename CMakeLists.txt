@@ -44,28 +44,30 @@ static char const KSNP_VERSION[] = \"${CMAKE_PROJECT_VERSION_MAJOR}.${CMAKE_PROJ
 
 set(PUBLIC_HEADERS
   include/ksnp/client.h
+  include/ksnp/client.hpp
   include/ksnp/compat.h
   include/ksnp/messages.h
   include/ksnp/serde.h
+  include/ksnp/serde.hpp
   include/ksnp/server.h
+  include/ksnp/server.hpp
   include/ksnp/types.h
+  include/ksnp/types.hpp
   "${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/include/ksnp/version.h"
 )
 
 add_library(ksnp STATIC
   src/client.cpp
-  src/client.hpp
-  src/serde.cpp
-  src/serde.hpp
-  src/server.cpp
-  src/server.hpp
-  src/types.cpp
   src/empty.c
+  src/helpers.hpp
+  src/serde.cpp
+  src/server.cpp
+  src/types.cpp
   ${PUBLIC_HEADERS}
 )
 
 target_link_libraries(ksnp PUBLIC LibUUID::LibUUID json-c::json-c)
-target_include_directories(ksnp PUBLIC ${CMAKE_CURRENT_LIST_DIR}/include  "${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/include")
+target_include_directories(ksnp PUBLIC ${CMAKE_CURRENT_LIST_DIR}/include "${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/include")
 target_include_directories(ksnp PRIVATE ${CMAKE_CURRENT_LIST_DIR}/src)
 target_compile_features(ksnp PUBLIC cxx_std_20)
 target_compile_features(ksnp PUBLIC c_std_23)
@@ -81,7 +83,7 @@ install(TARGETS ksnp
 if (BUILD_TEST OR BUILD_EXAMPLES)
   add_library(example_common OBJECT examples/common.cpp examples/common.hpp)
   target_link_libraries(example_common PUBLIC ksnp)
-  target_include_directories(example_common PUBLIC ${CMAKE_CURRENT_LIST_DIR}/examples ${CMAKE_CURRENT_LIST_DIR}/src)
+  target_include_directories(example_common PUBLIC ${CMAKE_CURRENT_LIST_DIR}/examples)
   target_compile_features(example_common PUBLIC cxx_std_20)
 endif (BUILD_TEST OR BUILD_EXAMPLES)
 

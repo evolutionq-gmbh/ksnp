@@ -4,9 +4,9 @@
 #include <variant>
 #include <vector>
 
-#include "helpers.hpp"
 #include "ksnp/server.h"
 #include "ksnp/types.h"
+#include "ksnp/types.hpp"
 #include "serde.hpp"
 
 namespace ksnp

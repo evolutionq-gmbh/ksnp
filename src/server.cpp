@@ -13,10 +13,8 @@ Single connection context
 #include "ksnp/messages.h"
 #include "ksnp/serde.h"
 #include "ksnp/server.h"
+#include "ksnp/server.hpp"
 #include "ksnp/types.h"
-#include "server.hpp"
-
-using namespace ksnp;
 
 namespace ksnp
 {
@@ -507,7 +505,7 @@ auto server::on_error(ksnp_error_code err) -> server_event
 
 auto ksnp_simple_stream_create(ksnp_stream **stream_ptr, uint16_t chunk_size) noexcept -> ksnp_error
 try {
-    auto *stream = new struct simple_stream(chunk_size);
+    auto *stream = new struct ksnp::simple_stream(chunk_size);
     *stream_ptr  = stream->as_stream_ptr();
     return ksnp_error::KSNP_E_NO_ERROR;
 }
@@ -515,7 +513,7 @@ CATCH_ALL
 
 void ksnp_simple_stream_destroy(ksnp_stream *stream) noexcept
 {
-    delete simple_stream::from_stream_ptr(stream);
+    delete ksnp::simple_stream::from_stream_ptr(stream);
 }
 
 auto ksnp_simple_stream_add_key_data(ksnp_stream *stream, ksnp_data key_data) noexcept -> ksnp_error
@@ -527,7 +525,7 @@ try {
 #ifdef __clang__
 #pragma clang unsafe_buffer_usage end
 #endif
-    simple_stream::from_stream_ptr(stream)->add_key_data(key_buffer);
+    ksnp::simple_stream::from_stream_ptr(stream)->add_key_data(key_buffer);
     return ksnp_error::KSNP_E_NO_ERROR;
 }
 CATCH_ALL
@@ -541,7 +539,7 @@ struct ksnp_server : ksnp::server {
 auto ksnp_server_create(struct ksnp_server **server, ksnp_message_context *ctx) noexcept -> ksnp_error
 try {
     *server = nullptr;
-    *server = new ksnp_server(*reinterpret_cast<message_context *>(ctx));
+    *server = new ksnp_server(*reinterpret_cast<ksnp::message_context *>(ctx));
     return ksnp_error::KSNP_E_NO_ERROR;
 }
 CATCH_ALL

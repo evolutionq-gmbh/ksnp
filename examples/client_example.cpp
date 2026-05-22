@@ -25,9 +25,8 @@
 #include <variant>
 
 #include "common.hpp"
-#include "helpers.hpp"
 #include "ksnp/client.h"
-#include "ksnp/types.h"
+#include "ksnp/client.hpp"
 
 /// @brief Type for key chunks, which are fixed-size byte arrays.
 using key_chunk = std::array<unsigned char, CHUNK_SIZE>;
@@ -44,7 +43,7 @@ static size_t const MAX_BUFFERED_KEYS = 32;
  * buffering key data. It keeps a buffer of 32 chunks available. An attempt to
  * use an index outside of this range will fail.
  */
-class client : private connection_handler<client_obj>
+class client : private connection_handler<ksnp::client>
 {
     std::deque<std::optional<key_chunk>> chunks;
     size_t                               first_chunk;
@@ -79,7 +78,7 @@ public:
         }
 
         parameters.capacity = CHUNK_SIZE * MAX_BUFFERED_KEYS;
-        this->connection().open_stream(parameters);
+        this->connection().open_stream(&parameters);
         auto open_event = this->wait_for_event<ksnp_client_event_stream_open>();
         if (!open_event) {
             throw std::runtime_error("Connection closed by server");
@@ -160,7 +159,7 @@ public:
     }
 
 protected:
-    auto process_event(client_obj::result_type &event) -> bool override;
+    auto process_event(result_type &event) -> bool override;
 
 private:
     template<typename T>
@@ -177,9 +176,9 @@ private:
     }
 };
 
-auto client::process_event(client_obj::result_type &event) -> bool
+auto client::process_event(result_type &event) -> bool
 {
-    auto const visitor = ksnp::overloads{
+    auto const visitor = overloads{
         [this](ksnp_client_event_stream_open &evt) -> bool {
             if (evt.code == ksnp_status_code::KSNP_STATUS_SUCCESS) {
                 std::cout << "Server opened the stream\n";
@@ -369,7 +368,7 @@ try {
             continue;
         }
 
-        std::visit(ksnp::overloads{
+        std::visit(overloads{
                        [&clnt](cmd_open_stream const &cmd) -> void {
                            ksnp_stream_open_params params{
                                .stream_id           = {},

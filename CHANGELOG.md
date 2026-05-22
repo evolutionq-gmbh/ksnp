@@ -9,6 +9,7 @@ Current
 * Add further checks on stream parameters before serializing.
 * Handle messages similar to events, adding a "none" variant.
 * Add a field for user data to the stream and buffer structures.
+* Make the C++ API public.
 
 Version 0.3.1
 -------------

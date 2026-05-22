@@ -9,9 +9,9 @@
 #include <variant>
 #include <vector>
 
-#include "helpers.hpp"
 #include "ksnp/messages.h"
 #include "ksnp/serde.h"
+#include "ksnp/types.hpp"
 
 namespace ksnp
 {
