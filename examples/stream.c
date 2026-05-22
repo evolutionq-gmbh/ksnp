@@ -169,6 +169,7 @@ int main(int argc, char const *argv[])
         }
 
         close(sock);
+        sock = -1;
     }
     freeaddrinfo(result);
     if (sock == -1) {

@@ -1,6 +1,11 @@
 Changelog
 =========
 
+Current
+-------
+
+* Fix a bug in hostname lookup for the stream example.
+
 Version 0.3.1
 -------------
 
