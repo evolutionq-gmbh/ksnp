@@ -261,20 +261,41 @@ class vector_buffer
 {
 public:
     vector_buffer()
-        : ksnp_buffer{.data     = data_fn,
-                      .size     = size_fn,
-                      .consume  = consume_fn,
-                      .append   = append_fn,
-                      .truncate = truncate_fn}
+        : ksnp_buffer{
+              .data      = data_fn,
+              .size      = size_fn,
+              .consume   = consume_fn,
+              .append    = append_fn,
+              .truncate  = truncate_fn,
+              .user_data = this,
+          }
     {}
 
-    auto ksnp_buffer_ptr() -> ksnp_buffer *
-    {
-        return this;
-    }
+    vector_buffer(vector_buffer const &)     = default;
+    vector_buffer(vector_buffer &&) noexcept = default;
+
+    ~vector_buffer() = default;
+
+    auto operator=(vector_buffer const &) -> vector_buffer &     = default;
+    auto operator=(vector_buffer &&) noexcept -> vector_buffer & = default;
 
     using vector::data;
     using vector::size;
+
+    static auto from_buffer_ptr(ksnp_buffer const *base_buffer) -> vector_buffer const *
+    {
+        return static_cast<vector_buffer const *>(base_buffer->user_data);
+    }
+
+    static auto from_buffer_ptr(ksnp_buffer *base_buffer) -> vector_buffer *
+    {
+        return static_cast<vector_buffer *>(base_buffer->user_data);
+    }
+
+    auto as_buffer_ptr() -> ksnp_buffer *
+    {
+        return this;
+    }
 
 private:
     static auto data_fn(struct ksnp_buffer *buffer) noexcept -> unsigned char *

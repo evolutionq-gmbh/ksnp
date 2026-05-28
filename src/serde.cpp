@@ -1173,8 +1173,8 @@ public:
     ksnp_message_context()
         : input_storage(vector_buffer())
         , output_storage(vector_buffer())
-        , input_data(this->input_storage->ksnp_buffer_ptr())
-        , output_data(this->output_storage->ksnp_buffer_ptr())
+        , input_data(this->input_storage->as_buffer_ptr())
+        , output_data(this->output_storage->as_buffer_ptr())
         , eof(false)
     {}
 

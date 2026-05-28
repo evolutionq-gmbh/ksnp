@@ -207,6 +207,10 @@ struct ksnp_stream {
     /// may still not result in chunk data if insufficient data is available.
     /// @return Any of the values from the @ref ksnp_error enum on failure.
     ksnp_error (*next_chunk)(struct ksnp_stream *stream, struct ksnp_data *chunk_data, uint16_t max_count) NOEXCEPT;
+
+    /// @brief Pointer to user data. This pointer is optional, and may point
+    /// to any data.
+    void *user_data;
 };
 
 /**

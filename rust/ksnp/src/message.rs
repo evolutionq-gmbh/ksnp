@@ -89,6 +89,7 @@ impl<T: BufferImpl> Buffer<T> {
                 consume: Some(Self::consume),
                 append: Some(Self::append),
                 truncate: Some(Self::truncate),
+                user_data: null_mut(),
             },
             this,
         }

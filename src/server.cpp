@@ -450,42 +450,17 @@ auto ksnp_server::on_error(ksnp_error_code err) -> server_event
     };
 }
 
-void simple_stream::add_key_data(std::span<uint8_t const> data)
-{
-    if (this->prev_read > 0) {
-        this->provisioned_data.erase(this->provisioned_data.begin(),
-                                     this->provisioned_data.begin() + static_cast<diff_t>(this->prev_read));
-        this->prev_read = 0;
-    }
-    this->provisioned_data.insert(this->provisioned_data.end(), data.begin(), data.end());
-}
-
-auto simple_stream::next_chunk() -> std::optional<std::span<uint8_t const>>
-{
-    if (this->prev_read > 0) {
-        this->provisioned_data.erase(this->provisioned_data.begin(),
-                                     this->provisioned_data.begin() + static_cast<diff_t>(this->prev_read));
-    }
-
-    auto avail = this->provisioned_data.size();
-    if (avail < this->chunk_size) {
-        return std::nullopt;
-    }
-    this->prev_read = this->chunk_size;
-    return std::span(this->provisioned_data).first(this->prev_read);
-}
-
 auto ksnp_simple_stream_create(ksnp_stream **stream_ptr, uint16_t chunk_size) noexcept -> ksnp_error
 try {
     auto *stream = new struct simple_stream(chunk_size);
-    *stream_ptr  = stream;
+    *stream_ptr  = stream->as_stream_ptr();
     return ksnp_error::KSNP_E_NO_ERROR;
 }
 CATCH_ALL
 
 void ksnp_simple_stream_destroy(ksnp_stream *stream) noexcept
 {
-    delete static_cast<simple_stream *>(stream);
+    delete simple_stream::from_stream_ptr(stream);
 }
 
 auto ksnp_simple_stream_add_key_data(ksnp_stream *stream, ksnp_data key_data) noexcept -> ksnp_error
@@ -497,30 +472,7 @@ try {
 #ifdef __clang__
 #pragma clang unsafe_buffer_usage end
 #endif
-    static_cast<simple_stream *>(stream)->add_key_data(key_buffer);
-    return ksnp_error::KSNP_E_NO_ERROR;
-}
-CATCH_ALL
-
-auto simple_stream::stream_has_chunk(ksnp_stream const *stream) noexcept -> bool
-{
-    auto const *simple_stream = static_cast<::simple_stream const *>(stream);
-    return (simple_stream->provisioned_data.size() - simple_stream->prev_read) >= simple_stream->chunk_size;
-}
-
-auto simple_stream::stream_next_chunk(ksnp_stream *stream, struct ksnp_data *data, uint16_t max_count) noexcept
-    -> ksnp_error
-try {
-    // Always returns exactly 1 chunk.
-    (void)max_count;
-
-    if (auto chunk = static_cast<simple_stream *>(stream)->next_chunk(); chunk.has_value()) {
-        data->data = const_cast<unsigned char *>(chunk->data());
-        data->len  = static_cast<uint32_t>(chunk->size());
-    } else {
-        data->data = nullptr;
-        data->len  = 0;
-    }
+    simple_stream::from_stream_ptr(stream)->add_key_data(key_buffer);
     return ksnp_error::KSNP_E_NO_ERROR;
 }
 CATCH_ALL

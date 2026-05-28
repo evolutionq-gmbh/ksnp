@@ -248,6 +248,7 @@ impl<T: StreamImpl> Stream<T> {
                 chunk_size: this.chunk_size(),
                 has_chunk_available: Some(Self::has_chunk_available),
                 next_chunk: Some(Self::next_chunk),
+                user_data: null_mut(),
             },
             this,
         }

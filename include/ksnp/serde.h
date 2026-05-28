@@ -88,6 +88,10 @@ struct ksnp_buffer {
     /// @param size Size of the buffer to truncate to. This value must not
     /// exceed the @a size member, otherwise the effects are undefined.
     void (*truncate)(struct ksnp_buffer *buffer, size_t size) NOEXCEPT;
+
+    /// @brief Pointer to user data. This pointer is optional, and may point
+    /// to any data.
+    void *user_data;
 };
 
 /**

@@ -660,7 +660,7 @@ class connection_handler
 public:
     explicit connection_handler(fd sock)
         : sock(std::move(sock))
-        , msg_context(this->read_buffer.ksnp_buffer_ptr(), this->write_buffer.ksnp_buffer_ptr())
+        , msg_context(this->read_buffer.as_buffer_ptr(), this->write_buffer.as_buffer_ptr())
         , conn(T(this->msg_context))
     {
         this->read_buffer.reserve(KSNP_MAX_MSG_LEN);

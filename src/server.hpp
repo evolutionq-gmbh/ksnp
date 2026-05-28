@@ -7,40 +7,98 @@
 #include "ksnp/server.h"
 #include "ksnp/types.h"
 
-struct simple_stream : ksnp_stream {
+struct simple_stream : protected ksnp_stream {
 private:
-    using diff_t = std::vector<uint8_t>::difference_type;
+    using diff_type = std::vector<uint8_t>::difference_type;
+    using size_type = std::vector<uint8_t>::size_type;
 
     std::vector<uint8_t> provisioned_data;
-    size_t               prev_read;
+    size_type            prev_read;
 
 public:
     explicit simple_stream(uint16_t chunk_size)  // NOLINT(bugprone-easily-swappable-parameters)
         : ksnp_stream
         {
-            .chunk_size=chunk_size,
-            .has_chunk_available = &simple_stream::stream_has_chunk,
-            .next_chunk = &simple_stream::stream_next_chunk,
+            .chunk_size = chunk_size, .has_chunk_available = &simple_stream::has_chunk_available_fn,
+            .next_chunk = &simple_stream::next_chunk_fn,
+            .user_data = this,
         }
         , prev_read(0)
     {}
 
-    void add_key_data(std::span<uint8_t const> data);
+    simple_stream(simple_stream const &) = default;
+    simple_stream(simple_stream &&)      = default;
+
+    ~simple_stream() = default;
+
+    auto operator=(simple_stream const &) -> simple_stream & = default;
+    auto operator=(simple_stream &&) -> simple_stream &      = default;
+
+    [[nodiscard]] auto has_chunk() const noexcept -> bool
+    {
+        return (this->provisioned_data.size() - this->prev_read) >= this->chunk_size;
+    }
+
+    void add_key_data(std::span<uint8_t const> data)
+    {
+        if (this->prev_read > 0) {
+            this->provisioned_data.erase(this->provisioned_data.begin(),
+                                         this->provisioned_data.begin() + static_cast<diff_type>(this->prev_read));
+            this->prev_read = 0;
+        }
+        this->provisioned_data.insert(this->provisioned_data.end(), data.begin(), data.end());
+    }
+
+    auto next_chunk(struct ksnp_data *data, uint16_t max_count) noexcept -> ksnp_error
+    {
+        if (this->prev_read > 0) {
+            this->provisioned_data.erase(this->provisioned_data.begin(),
+                                         this->provisioned_data.begin() + static_cast<diff_type>(this->prev_read));
+        }
+
+        // Always returns exactly 1 chunk.
+        (void)max_count;
+
+        auto avail = this->provisioned_data.size();
+        if (avail < this->chunk_size) {
+            data->data      = nullptr;
+            data->len       = 0;
+            this->prev_read = 0;
+        } else {
+            data->data      = const_cast<unsigned char *>(this->provisioned_data.data());
+            data->len       = static_cast<size_type>(this->chunk_size);
+            this->prev_read = this->chunk_size;
+        }
+
+        return ksnp_error::KSNP_E_NO_ERROR;
+    }
+
+    static auto from_stream_ptr(ksnp_stream const *base_stream) -> simple_stream const *
+    {
+        return static_cast<simple_stream const *>(base_stream->user_data);
+    }
+
+    static auto from_stream_ptr(ksnp_stream *base_stream) -> simple_stream *
+    {
+        return static_cast<simple_stream *>(base_stream->user_data);
+    }
+
+    auto as_stream_ptr() -> ksnp_stream *
+    {
+        return this;
+    }
 
 private:
-    /**
-     * @brief Retrieve the next available chunk of key data, if any.
-     *
-     * The resulting span is valid only until the next call to @ref next_chunk or @ref add_key_data.
-     *
-     * @return A span containing the key data to sent (which contains exactly
-     * one chunk), or nothing if no key data is available.
-     */
-    auto next_chunk() -> std::optional<std::span<uint8_t const>>;
+    [[nodiscard]] static auto has_chunk_available_fn(ksnp_stream const *base_stream) noexcept -> bool
+    {
+        return static_cast<simple_stream const *>(base_stream)->has_chunk();
+    }
 
-    [[nodiscard]] static auto stream_has_chunk(ksnp_stream const *stream) noexcept -> bool;
     [[nodiscard]] static auto
-    stream_next_chunk(ksnp_stream *stream, struct ksnp_data *data, uint16_t max_count) noexcept -> ksnp_error;
+    next_chunk_fn(ksnp_stream *base_stream, struct ksnp_data *data, uint16_t max_count) noexcept -> ksnp_error
+    {
+        return static_cast<simple_stream *>(base_stream)->next_chunk(data, max_count);
+    }
 };
 
 struct ksnp_server {
