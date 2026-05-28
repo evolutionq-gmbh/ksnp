@@ -14,6 +14,7 @@ Current
   chunks.
 * Merge the data and size functions of ksnp_buffer to a method that returns
   ksnp_data.
+* Add Python bindings.
 
 Version 0.3.1
 -------------
