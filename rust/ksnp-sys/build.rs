@@ -137,10 +137,11 @@ fn main() {
         .generate()
         .expect("Unable to generate bindings");
 
+    let header_dir = knsp_root_dir.join("include");
     for header in &headers {
         println!(
             "cargo::rerun-if-changed={}",
-            include_path.join(header).display()
+            header_dir.join(header).display()
         );
     }
 
