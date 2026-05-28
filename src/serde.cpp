@@ -253,8 +253,14 @@ template<std::unsigned_integral TargetUint>
     if (json_object_get_type(obj) != json_type_int) {
         throw ksnp::protocol_exception(ksnp_error_code::KSNP_PROT_E_BAD_JSON_TYPE);
     }
+    errno     = 0;
+    auto sval = json_object_get_int64(obj);
+    if (errno != 0 || sval < 0) {
+        throw ksnp::protocol_exception(ksnp_error_code::KSNP_PROT_E_BAD_JSON_VAL, "integer out of bounds");
+    }
+    errno    = 0;
     auto val = json_object_get_uint64(obj);
-    if (!std::in_range<TargetUint>(val)) {
+    if (errno != 0 || !std::in_range<TargetUint>(val)) {
         throw ksnp::protocol_exception(ksnp_error_code::KSNP_PROT_E_BAD_JSON_VAL, "integer out of bounds");
     }
     return static_cast<TargetUint>(val);
@@ -678,6 +684,12 @@ private:
 
     void write_parameters(ksnp_stream_open_params const *params)
     {
+        if (params->destination.sae == nullptr || params->chunk_size > KSNP_MAX_CHUNK_SIZE
+            || (params->max_bps.bits > 0 && params->max_bps < params->min_bps)
+            || (params->provision_size > 0 && params->provision_size < params->chunk_size)) {
+            throw ksnp::exception(ksnp_error::KSNP_E_INVALID_ARGUMENT);
+        }
+
         json_obj_deleter main_obj(json_object_new_object());
         auto            *obj = main_obj.get();
 
@@ -698,6 +710,11 @@ private:
 
     void write_reply_parameters(ksnp_stream_accepted_params const *params)
     {
+        if (params->min_bps.bits == 0 || params->chunk_size > KSNP_MAX_CHUNK_SIZE
+            || (params->provision_size > 0 && params->provision_size < params->chunk_size)) {
+            throw ksnp::exception(ksnp_error::KSNP_E_INVALID_ARGUMENT);
+        }
+
         json_obj_deleter main_obj(json_object_new_object());
         auto            *obj = main_obj.get();
 
@@ -712,12 +729,47 @@ private:
         this->write_json(obj, json_ser_flag::with_length);
     }
 
+    template<typename T>
+    void check_qos_range(T const &qos_value)
+    {
+        if (qos_value.type == ksnp_qos_type::KSNP_QOS_RANGE) {
+            if (qos_value.range.min > qos_value.range.max) {
+                throw ksnp::exception(ksnp_error::KSNP_E_INVALID_ARGUMENT);
+            }
+        }
+    }
+
     void write_qos_parameters(ksnp_stream_qos_params const *params)
     {
         if (params == nullptr) {
             // No JSON payload
             write_u16(0);
             return;
+        }
+
+        check_qos_range(params->chunk_size);
+        check_qos_range(params->min_bps);
+        check_qos_range(params->ttl);
+        check_qos_range(params->provision_size);
+
+        if (params->chunk_size.type == ksnp_qos_type::KSNP_QOS_RANGE
+            && params->chunk_size.range.max > KSNP_MAX_CHUNK_SIZE) {
+            throw ksnp::exception(ksnp_error::KSNP_E_INVALID_ARGUMENT);
+        }
+
+        if (params->chunk_size.type == ksnp_qos_type::KSNP_QOS_LIST) {
+#ifdef __clang__
+#pragma clang unsafe_buffer_usage begin
+#endif
+            auto values = std::span{params->chunk_size.list.values, params->chunk_size.list.count};
+#ifdef __clang__
+#pragma clang unsafe_buffer_usage end
+#endif
+            if (std::ranges::any_of(values, [](auto chunk_size) -> bool {
+                    return chunk_size > KSNP_MAX_CHUNK_SIZE;
+                })) {
+                throw ksnp::exception(ksnp_error::KSNP_E_INVALID_ARGUMENT);
+            }
         }
 
         json_obj_deleter main_obj(json_object_new_object());
@@ -1229,6 +1281,9 @@ public:
                 write_enum(msg->error.code);
                 break;
             case ksnp_message_type::KSNP_MSG_VERSION:
+                if (msg->version.minimum_version > msg->version.maximum_version) {
+                    throw ksnp::exception(ksnp_error::KSNP_E_INVALID_ARGUMENT);
+                }
                 write_enum(msg->version.minimum_version);
                 write_enum(msg->version.maximum_version);
                 break;
@@ -1296,6 +1351,10 @@ public:
                 write_u32(msg->capacity_notify.additional_capacity);
                 break;
             case ksnp_message_type::KSNP_MSG_KEY_DATA_NOTIFY: {
+                if (msg->key_data_notify.parameters != nullptr
+                    && json_object_get_type(msg->key_data_notify.parameters) != json_type_object) {
+                    throw ksnp::exception(ksnp_error::KSNP_E_INVALID_ARGUMENT);
+                }
 #ifdef __clang__
 #pragma clang unsafe_buffer_usage begin
 #endif

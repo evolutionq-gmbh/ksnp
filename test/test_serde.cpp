@@ -365,7 +365,23 @@ ksnp_stream_qos_params const qos_params_bad_chunk_list{
     .extensions     = nullptr,
 };
 
-std::array<ksnp::message_t, 10> const bad_messages_rt = {
+std::string const large_string(0xFFFF, '*');  // NOLINT cert-err58-cpp
+
+ksnp_stream_open_params const req_params_too_large{
+    .stream_id           = {},
+    .source              = {.sae = nullptr, .network = nullptr},
+    .destination         = {.sae = large_string.c_str(), .network = nullptr},
+    .chunk_size          = 0,
+    .capacity            = 0,
+    .min_bps             = {.bits = 0, .seconds = 0},
+    .max_bps             = {.bits = 0, .seconds = 0},
+    .ttl                 = 0,
+    .provision_size      = 0,
+    .extensions          = nullptr,
+    .required_extensions = nullptr,
+};
+
+std::array<ksnp::message_t, 17> const bad_messages_ser = {
     ksnp_msg_version{.minimum_version = static_cast<ksnp_protocol_version>(2),
                      .maximum_version = ksnp_protocol_version::PROTOCOL_V1},
     ksnp_msg_version{.minimum_version = static_cast<ksnp_protocol_version>(0xFF),
@@ -390,41 +406,22 @@ std::array<ksnp::message_t, 10> const bad_messages_rt = {
     ksnp_msg_open_stream_reply{.code       = ksnp_status_code::KSNP_STATUS_INVALID_PARAMETER,
                      .parameters = ksnp_stream_reply_params{.qos = &qos_params_bad_chunk_list},
                      .message    = nullptr},
-};
-
-std::string const large_string(0xFFFF, '*');  // NOLINT cert-err58-cpp
-
-ksnp_stream_open_params const req_params_too_large{
-    .stream_id           = {},
-    .source              = {.sae = nullptr, .network = nullptr},
-    .destination         = {.sae = large_string.c_str(), .network = nullptr},
-    .chunk_size          = 0,
-    .capacity            = 0,
-    .min_bps             = {.bits = 0, .seconds = 0},
-    .max_bps             = {.bits = 0, .seconds = 0},
-    .ttl                 = 0,
-    .provision_size      = 0,
-    .extensions          = nullptr,
-    .required_extensions = nullptr,
-};
-
-std::array<ksnp::message_t, 7> const bad_messages_ser = {
     ksnp_msg_open_stream{.parameters = nullptr},
     ksnp_msg_open_stream{.parameters = &req_params_too_large},
     ksnp_msg_open_stream_reply{.code       = ksnp_status_code::KSNP_STATUS_SUCCESS,
-                         .parameters = ksnp_stream_reply_params{.reply = nullptr},
-                         .message    = nullptr},
+                     .parameters = ksnp_stream_reply_params{.reply = nullptr},
+                     .message    = nullptr},
     ksnp_msg_open_stream_reply{.code       = ksnp_status_code::KSNP_STATUS_SUCCESS,
-                         .parameters = ksnp_stream_reply_params{.reply = &acc_params},
-                         .message    = test_string.c_str()},
+                     .parameters = ksnp_stream_reply_params{.reply = &acc_params},
+                     .message    = test_string.c_str()},
     ksnp_msg_close_stream_notify{.code = ksnp_status_code::KSNP_STATUS_SUCCESS, .message = test_string.c_str()},
     ksnp_msg_suspend_stream_reply{.code    = ksnp_status_code::KSNP_STATUS_SUCCESS,
-                         .timeout = 10,
-                         .message = test_string.c_str()},
+                     .timeout = 10,
+                     .message = test_string.c_str()},
     ksnp_msg_keep_alive_stream_reply{.code = ksnp_status_code::KSNP_STATUS_SUCCESS, .message = test_string.c_str()},
 };
 
-std::array<const_data, 45> const bad_parser_input = {
+std::array<const_data, 47> const bad_parser_input = {
     // Invalid message size: smaller than header size
     "\x00\x00\x00\x03"_cdat,
     // Error message too short
@@ -469,8 +466,12 @@ std::array<const_data, 45> const bad_parser_input = {
     "\x00\x03\x00\x3B\x00\x00\x00\x00\x00\x31{\"min-bps\":{\"min\":{\"bits\":1},\"max\":{\"bits\":256}}}"_cdat,
     // OpenStreamReply message; error code with non-QoS parameter
     "\x00\x03\x00\x1B\x00\x00\x00\x01\x00\x11{\"chunk-size\":16}"_cdat,
-    // OpenStreamReply message; QoS parameter exceeding u32 limit
-    "\x00\x03\x00\x25\x00\x00\x00\x01\x00\x1B{\"chunk-size\":[4294967296]}"_cdat,
+    // OpenStreamReply message; QoS parameter with bad range bounds
+    "\x00\x03\x00\x2A\x00\x00\x00\x01\x00\x20{\"chunk-size\":\"min\":32,\"max\":16}"_cdat,
+    // OpenStreamReply message; QoS parameter exceeding chunk limit
+    "\x00\x03\x00\x20\x00\x00\x00\x01\x00\x16{\"chunk-size\":[65536]}"_cdat,
+    // OpenStreamReply message; QoS parameter negative
+    "\x00\x03\x00\x1D\x00\x00\x00\x01\x00\x13{\"chunk-size\":[-1]}"_cdat,
     // OpenStreamReply message; QoS parameter with bad type
     "\x00\x03\x00\x1F\x00\x00\x00\x01\x00\x15{\"chunk-size\":[\"16\"]}"_cdat,
     // OpenStreamReply message; QoS parameter with unknown key
@@ -536,23 +537,6 @@ BOOST_DATA_TEST_CASE(test_serde_rt, boost::unit_test::data::make(good_messages),
     auto next_message = ctx.next_event();
     BOOST_TEST(next_message.has_value());
     BOOST_CHECK(*next_message == message);
-}
-
-BOOST_DATA_TEST_CASE(test_serde_rt_bad_input, boost::unit_test::data::make(bad_messages_rt), message)
-{
-    message_context_t                      ctx;
-    std::array<unsigned char, BUFFER_SIZE> write_mem{};
-    std::span<unsigned char>               write_buffer = {write_mem};
-
-    BOOST_REQUIRE(ctx.want_read());
-    BOOST_REQUIRE(!ctx.want_write());
-
-    auto raw_msg = ksnp::into_message(message);
-    ctx.write_message(&raw_msg);
-    auto written = ctx.write_data(write_buffer);
-    BOOST_REQUIRE(ctx.read_data(write_buffer.first(written)) == written);
-
-    BOOST_CHECK_THROW(ctx.next_event(), ksnp::protocol_exception);
 }
 
 BOOST_DATA_TEST_CASE(test_serializer_bad_input, boost::unit_test::data::make(bad_messages_ser), message)
