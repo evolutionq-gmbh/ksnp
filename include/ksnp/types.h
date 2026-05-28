@@ -54,6 +54,9 @@ ENUM_TYPE(ksnp_error, unsigned int)
     KSNP_E_INVALID_ARGUMENT,
     /// @brief A key stream returned more data than was permissible.
     KSNP_E_KEY_DATA_TOO_LARGE,
+    /// @brief A key stream returned data that is not a multiple of the chunk
+    /// size.
+    KSNP_E_KEY_DATA_NOT_CHUNKED,
     /// @brief A key stream uses a chunk size that is too large.
     KSNP_E_CHUNK_SIZE_TOO_LARGE,
     /// @brief A message with an invalid type was used.

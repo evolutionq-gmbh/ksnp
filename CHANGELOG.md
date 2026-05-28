@@ -5,6 +5,7 @@ Current
 -------
 
 * Fix a bug in hostname lookup for the stream example.
+* Have the server ensure it only sends exact chunk-sized key data.
 
 Version 0.3.1
 -------------

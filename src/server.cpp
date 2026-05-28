@@ -77,6 +77,9 @@ void ksnp_server::flush_data()
             throw ksnp::exception(res);
         }
         if (chunk_data.len > 0) {
+            if (chunk_data.len % this->current_stream->chunk_size != 0) {
+                throw ksnp::exception(ksnp_error::KSNP_E_KEY_DATA_NOT_CHUNKED);
+            }
             if (chunk_data.len > (static_cast<size_t>(max_count * this->current_stream->chunk_size))) {
                 throw ksnp::exception(ksnp_error::KSNP_E_KEY_DATA_TOO_LARGE);
             }

@@ -87,6 +87,8 @@ auto ksnp_error_description(ksnp_error error) -> char const *
         return "invalid argument";
     case ksnp_error::KSNP_E_KEY_DATA_TOO_LARGE:
         return "too much key data";
+    case ksnp_error::KSNP_E_KEY_DATA_NOT_CHUNKED:
+        return "key data is not chunked";
     case ksnp_error::KSNP_E_INVALID_MESSAGE_TYPE:
         return "message type invalid";
     case ksnp_error::KSNP_E_INVALID_EVENT_TYPE:
