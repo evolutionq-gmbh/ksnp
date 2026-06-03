@@ -56,6 +56,7 @@ add_library(ksnp STATIC
   src/client.cpp
   src/client.hpp
   src/serde.cpp
+  src/serde.hpp
   src/server.cpp
   src/server.hpp
   src/types.cpp

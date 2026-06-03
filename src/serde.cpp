@@ -22,14 +22,14 @@
 #include "helpers.hpp"
 #include "ksnp/messages.h"
 #include "ksnp/serde.h"
+
 #include "ksnp/types.h"
+#include "serde.hpp"
 
 #ifndef JSON_C_OBJECT_ADD_CONSTANT_KEY
 // Support for legacy JSON-C versions.
 #define JSON_C_OBJECT_ADD_CONSTANT_KEY JSON_C_OBJECT_KEY_IS_CONSTANT
 #endif
-
-using namespace ksnp;
 
 namespace ksnp
 {
@@ -166,94 +166,7 @@ auto message::from_message(::ksnp_message msg) -> std::optional<message>
 
 namespace
 {
-
-/// @brief Wrapper for ksnp_buffer that makes it act as a Container.
-struct buffer {
-private:
-    ksnp_buffer *buf;
-
-public:
-    using element_type    = unsigned char;
-    using size_type       = size_t;
-    using difference_type = std::ptrdiff_t;
-
-    explicit buffer(ksnp_buffer *buf) : buf(buf)
-    {}
-
-    [[nodiscard]] auto data() const noexcept -> unsigned char const *
-    {
-        return this->buf->data(this->buf);
-    }
-
-    [[nodiscard]] auto data() noexcept -> unsigned char *
-    {
-        return this->buf->data(this->buf);
-    }
-
-    [[nodiscard]] auto size() const noexcept -> size_t
-    {
-        return this->buf->size(this->buf);
-    }
-
-    [[nodiscard]] auto empty() const noexcept -> bool
-    {
-        return this->size() == 0;
-    }
-
-    void consume(size_t count) noexcept
-    {
-        this->buf->consume(this->buf, count);
-    }
-
-    void append_exact(unsigned char const *data, size_t len)
-    {
-        auto written = len;
-        if (auto err = this->buf->append(this->buf, data, &written); err != ksnp_error::KSNP_E_NO_ERROR) {
-            throw exception(err);
-        }
-        if (len != written) {
-            throw exception(ksnp_error::KSNP_E_INSUFFICIENT_BUFFER);
-        }
-    }
-
-    void append(unsigned char const *data, size_t *len)
-    {
-        if (auto err = this->buf->append(this->buf, data, len); err != ksnp_error::KSNP_E_NO_ERROR) {
-            throw exception(err);
-        }
-    }
-
-    void truncate(size_t count) noexcept
-    {
-        this->buf->truncate(this->buf, count);
-    }
-
-#ifdef __clang__
-#pragma clang unsafe_buffer_usage begin
-#endif
-    [[nodiscard]] auto begin() -> unsigned char *
-    {
-        return this->data();
-    }
-
-    [[nodiscard]] auto end() -> unsigned char *
-    {
-        return this->data() + this->size();
-    }
-
-    [[nodiscard]] auto begin() const -> unsigned char const *
-    {
-        return this->data();
-    }
-
-    [[nodiscard]] auto end() const -> unsigned char const *
-    {
-        return this->data() + this->size();
-    }
-#ifdef __clang__
-#pragma clang unsafe_buffer_usage end
-#endif
-};
+using namespace ksnp;
 
 constexpr zstring_view json_key_ksid                = "key-stream-id"_zsv;
 constexpr zstring_view json_key_source              = "source"_zsv;
@@ -348,51 +261,6 @@ auto load_next_enum(std::span<U8> &data) -> T
     return static_cast<T>(load_next<typename std::underlying_type_t<T>>(data));
 }
 
-template<std::unsigned_integral SourceUint, typename U8 = unsigned char>
-[[nodiscard]] constexpr auto uint_to_be(SourceUint val) -> std::array<U8, sizeof(SourceUint)>
-{
-    constexpr std::size_t COUNT = sizeof(SourceUint);
-    constexpr int         BITS  = std::numeric_limits<U8>::digits;
-
-    std::array<U8, COUNT> result{};
-
-    for (size_t i = 0; i < result.size(); i++) {
-        result[i] = static_cast<U8>(val >> (BITS * (COUNT - i - 1)));
-    }
-
-    return result;
-}
-
-using json_ptr = unique_obj<json_object *, json_object_put>;
-
-class json_obj : json_ptr
-{
-
-public:
-    json_obj() = default;
-
-    explicit json_obj(json_object *obj) : json_ptr(json_object_get(ensure_object(obj)))
-    {}
-
-    using json_ptr::operator*;
-    using json_ptr::operator->;
-    using json_ptr::operator bool;
-
-private:
-    static auto ensure_object(json_object *obj) -> json_object *
-    {
-        if (json_object_is_type(obj, json_type_object) == 0) {
-            throw ksnp::protocol_exception(ksnp_error_code::KSNP_PROT_E_BAD_JSON_TYPE, "expected JSON object");
-        }
-        return obj;
-    }
-};
-
-enum class json_ser_flag : uint8_t {
-    plain,
-    with_length,
-};
-
 void json_to_stream_id(json_object *obj, ksnp_key_stream_id &stream_id)
 {
     if (json_object_get_type(obj) != json_type_string) {
@@ -468,29 +336,6 @@ void check_subobject_allowed_keys(json_object const *obj, string_views... allowe
     // here.
     return json_ptr(subobj != nullptr ? json_object_get(subobj) : nullptr);
 }
-
-class stream_address
-{
-private:
-    json_ptr     sae;
-    json_ptr     network;
-    ksnp_address address;
-
-public:
-    stream_address() : address{.sae = nullptr, .network = nullptr}
-    {}
-
-    stream_address(json_ptr sae, json_ptr network)
-        : sae(std::move(sae))
-        , network(std::move(network))
-        , address{.sae = json_object_get_string(*this->sae), .network = json_object_get_string(*this->network)}
-    {}
-
-    [[nodiscard]] auto get_address() const -> ksnp_address const &
-    {
-        return this->address;
-    }
-};
 
 [[nodiscard]] auto json_to_address(json_object const *obj) -> stream_address
 {
@@ -683,6 +528,16 @@ void add_qos_rate_to_json(json_object *obj, zstring_view key, ksnp_qos_rate qos)
 }
 
 template<typename T>
+void check_qos_range(T const &qos_value)
+{
+    if (qos_value.type == ksnp_qos_type::KSNP_QOS_RANGE) {
+        if (qos_value.range.min > qos_value.range.max) {
+            throw ksnp::exception(ksnp_error::KSNP_E_INVALID_ARGUMENT);
+        }
+    }
+}
+
+template<typename T>
 using qos_value = std::variant<std::monostate, std::tuple<T, T>, std::vector<T>>;
 
 template<typename T>
@@ -790,103 +645,6 @@ void set_qos(qos_value<T> value, U &dest, std::vector<T> &storage)
                },
                std::move(value));
 }
-
-}  // namespace
-
-class stream_open_params
-{
-private:
-    ksnp_stream_open_params params;
-    stream_address          source;
-    stream_address          destination;
-    json_obj                extensions;
-    json_obj                required_extensions;
-
-public:
-    stream_open_params(ksnp_stream_open_params params,
-                       stream_address          source,
-                       stream_address          destination,
-                       json_obj                extensions,
-                       json_obj                required_extensions)
-        : params(params)
-        , source(std::move(source))
-        , destination(std::move(destination))
-        , extensions(std::move(extensions))
-        , required_extensions(std::move(required_extensions))
-    {}
-
-    [[nodiscard]] auto get_params() -> ksnp_stream_open_params *
-    {
-        return &this->params;
-    }
-};
-
-class stream_accepted_params
-{
-private:
-    ksnp_stream_accepted_params params;
-    json_obj                    extensions;
-
-public:
-    stream_accepted_params(ksnp_stream_accepted_params params, json_obj extensions)
-        : params(params)
-        , extensions(std::move(extensions))
-    {}
-
-    [[nodiscard]] auto get_params() -> ksnp_stream_accepted_params *
-    {
-        return &this->params;
-    }
-};
-
-class stream_qos_params
-{
-private:
-    ksnp_stream_qos_params params;
-    std::vector<uint16_t>  chunk_list;
-    std::vector<ksnp_rate> min_bps_list;
-    std::vector<uint32_t>  ttl_list;
-    std::vector<uint32_t>  provision_size_list;
-    json_obj               extensions;
-
-public:
-    stream_qos_params(ksnp_stream_qos_params params,
-                      std::vector<uint16_t>  chunk_list,
-                      std::vector<ksnp_rate> min_bps_list,
-                      std::vector<uint32_t>  ttl_list,
-                      std::vector<uint32_t>  provision_size_list,
-                      json_obj               extensions)
-        : params(params)
-        , chunk_list(std::move(chunk_list))
-        , min_bps_list(std::move(min_bps_list))
-        , ttl_list(std::move(ttl_list))
-        , provision_size_list(std::move(provision_size_list))
-        , extensions(std::move(extensions))
-    {}
-
-    [[nodiscard]] auto get_params() -> ksnp_stream_qos_params *
-    {
-        return &this->params;
-    }
-};
-
-class key_data_parameters
-{
-private:
-    json_obj parameters;
-
-public:
-    explicit key_data_parameters(json_obj parameters) : parameters(std::move(parameters))
-    {}
-
-    [[nodiscard]] auto get_parameters() -> json_object *
-    {
-        return *this->parameters;
-    }
-};
-
-namespace
-{
 
 [[nodiscard]] auto json_to_stream_params(json_object *json) -> stream_open_params
 {
@@ -1069,621 +827,562 @@ namespace
 
 }  // namespace
 
-struct ksnp_message_context {
-private:
-    using message_payload = std::
-        variant<std::monostate, stream_open_params, stream_accepted_params, stream_qos_params, key_data_parameters>;
+namespace ksnp
+{
 
-    // Storage used when no user-provided buffers are used.
-    std::optional<vector_buffer> input_storage;
-    std::optional<vector_buffer> output_storage;
+void message_context::free_last_message()
+{
+    if (!this->last_message_len.has_value()) {
+        return;
+    }
 
-    buffer input_data;
-    buffer output_data;
+    this->input_data.consume(*this->last_message_len);
 
-    std::optional<uint16_t> last_message_len;
-    std::string             status_message;
-    message_payload         last_message_payload;
-    bool                    eof;
+    this->last_message_len.reset();
+    this->status_message.clear();
+    this->last_message_payload = std::monostate{};
+}
 
-    void free_last_message()
-    {
-        if (!this->last_message_len.has_value()) {
-            return;
-        }
-
-        this->input_data.consume(*this->last_message_len);
-
-        this->last_message_len.reset();
+auto message_context::load_next_string(std::span<uint8_t const> &data) -> char const *
+{
+    if (data.empty()) {
         this->status_message.clear();
-        this->last_message_payload = std::monostate{};
+        return nullptr;
+    }
+    this->status_message.assign(data.begin(), data.end());
+    data = data.subspan(data.size());
+    return this->status_message.c_str();
+}
+
+auto message_context::load_next_json(std::span<uint8_t const> &data, size_t json_len) -> json_obj
+{
+    // json_tokener_parse_ex reads the length as `int`.
+    if (json_len > data.size() || !std::in_range<int>(json_len)) {
+        throw ksnp::protocol_exception(ksnp_error_code::KSNP_PROT_E_BAD_JSON_LENGTH, "JSON length exceeds maximum");
     }
 
-    auto load_next_string(std::span<uint8_t const> &data) -> char const *
-    {
-        if (data.empty()) {
-            this->status_message.clear();
-            return nullptr;
-        }
-        this->status_message.assign(data.begin(), data.end());
-        data = data.subspan(data.size());
-        return this->status_message.c_str();
+    if (json_len == 0) {
+        return {};
     }
 
-    auto load_next_json(std::span<uint8_t const> &data, size_t json_len) -> json_obj
-    {
-        // json_tokener_parse_ex reads the length as `int`.
-        if (json_len > data.size() || !std::in_range<int>(json_len)) {
-            throw ksnp::protocol_exception(ksnp_error_code::KSNP_PROT_E_BAD_JSON_LENGTH, "JSON length exceeds maximum");
-        }
+    // Wrap the tokener in a unique_obj so it is properly freed in case of
+    // an exception.
+    unique_obj<json_tokener *, json_tokener_free> tok(json_tokener_new());
 
-        if (json_len == 0) {
-            return {};
-        }
-
-        // Wrap the tokener in a unique_obj so it is properly freed in case of
-        // an exception.
-        unique_obj<json_tokener *, json_tokener_free> tok(json_tokener_new());
-
-        auto const *data_ptr = data.data();
-        auto       *obj =
-            json_tokener_parse_ex(tok.get(), reinterpret_cast<char const *>(data_ptr), static_cast<int>(json_len));
-        if (obj == nullptr) {
-            this->status_message = json_tokener_error_desc(json_tokener_get_error(tok.get()));
-            throw ksnp::protocol_exception(ksnp_error_code::KSNP_PROT_E_BAD_JSON, this->status_message.c_str());
-        }
-
-        // Wrap the JSON object in a unique_ptr so it automatically frees its
-        // data when it goes out of scope. If the function is successful, store
-        // this object in the message context to extend the lifetime of all
-        // pointers into the JSON data.
-        json_obj raii_obj(obj);
-
-        // After the parsed JSON object, only whitespace is allowed within the
-        // JSON field of the message (as defined by `json_len`).
-        // Note that the JSON library only parses up to `json_len` bytes, so
-        // `parsed_len <= json_len`.
-        auto parsed_len = json_tokener_get_parse_end(tok.get());
-        if (!std::ranges::all_of(data.subspan(parsed_len, json_len - parsed_len), ::isspace)) {
-            throw ksnp::protocol_exception(ksnp_error_code::KSNP_PROT_E_BAD_JSON_LENGTH,
-                                           "extra data after JSON object");
-        }
-
-        data = data.subspan(json_len);
-
-        return raii_obj;
+    auto const *data_ptr = data.data();
+    auto *obj = json_tokener_parse_ex(tok.get(), reinterpret_cast<char const *>(data_ptr), static_cast<int>(json_len));
+    if (obj == nullptr) {
+        this->status_message = json_tokener_error_desc(json_tokener_get_error(tok.get()));
+        throw ksnp::protocol_exception(ksnp_error_code::KSNP_PROT_E_BAD_JSON, this->status_message.c_str());
     }
 
-    template<std::unsigned_integral T>
-    void write_uint(T val)
-    {
-        auto bytes = uint_to_be(val);
-        this->output_data.append_exact(bytes.data(), bytes.size());
+    // Wrap the JSON object in a unique_ptr so it automatically frees its
+    // data when it goes out of scope. If the function is successful, store
+    // this object in the message context to extend the lifetime of all
+    // pointers into the JSON data.
+    json_obj raii_obj(obj);
+
+    // After the parsed JSON object, only whitespace is allowed within the
+    // JSON field of the message (as defined by `json_len`).
+    // Note that the JSON library only parses up to `json_len` bytes, so
+    // `parsed_len <= json_len`.
+    auto parsed_len = json_tokener_get_parse_end(tok.get());
+    if (!std::ranges::all_of(data.subspan(parsed_len, json_len - parsed_len), ::isspace)) {
+        throw ksnp::protocol_exception(ksnp_error_code::KSNP_PROT_E_BAD_JSON_LENGTH, "extra data after JSON object");
     }
 
-    void write_u16(uint16_t val)
-    {
-        write_uint(val);
+    data = data.subspan(json_len);
+
+    return raii_obj;
+}
+
+void message_context::write_json(json_object *obj, json_ser_flag flag)
+{
+    size_t           json_len;
+    auto const      *json_ptr = check_alloc(json_object_to_json_string_length(obj, JSON_C_TO_STRING_PLAIN, &json_len));
+    std::string_view json(json_ptr, json_len);
+    if (!std::in_range<uint16_t>(json_len)) {
+        throw exception(ksnp_error::KSNP_E_SER_JSON_TOO_LARGE);
+    }
+    if (flag == json_ser_flag::with_length) {
+        this->write_u16(static_cast<uint16_t>(json_len));
+    }
+    this->output_data.append_exact(reinterpret_cast<unsigned char const *>(json.data()), json.size());
+}
+
+void message_context::write_message(char const *msg)
+{
+    if (msg == nullptr) {
+        return;
+    }
+    std::string_view msg_view(msg);
+    this->output_data.append_exact(reinterpret_cast<unsigned char const *>(msg_view.data()), msg_view.size());
+}
+
+void message_context::write_parameters(ksnp_stream_open_params const *params)
+{
+    if (params->destination.sae == nullptr || params->chunk_size > KSNP_MAX_CHUNK_SIZE
+        || (params->max_bps.bits > 0 && params->max_bps < params->min_bps)
+        || (params->provision_size > 0 && params->provision_size < params->chunk_size)) {
+        throw ksnp::exception(ksnp_error::KSNP_E_INVALID_ARGUMENT);
     }
 
-    void write_u32(uint32_t val)
-    {
-        write_uint(val);
+    json_ptr main_obj(json_object_new_object());
+    auto    *obj = main_obj.get();
+
+    add_stream_id_to_json(obj, json_key_ksid, {params->stream_id});
+    add_address_to_json(obj, json_key_source, params->source);
+    add_address_to_json(obj, json_key_destination, params->destination);
+    add_uint_to_json(obj, json_key_chunk_size, params->chunk_size);
+    add_uint_to_json(obj, json_key_capacity, params->capacity);
+    add_rate_to_json(obj, json_key_min_bps, params->min_bps);
+    add_rate_to_json(obj, json_key_max_bps, params->max_bps);
+    add_uint_to_json(obj, json_key_ttl, params->ttl);
+    add_uint_to_json(obj, json_key_provision_size, params->provision_size);
+    add_subobject_to_json(obj, json_key_extensions, params->extensions);
+    add_subobject_to_json(obj, json_key_required_extensions, params->required_extensions);
+
+    this->write_json(obj, json_ser_flag::plain);
+}
+
+void message_context::write_reply_parameters(ksnp_stream_accepted_params const *params)
+{
+    if (params->min_bps.bits == 0 || params->chunk_size > KSNP_MAX_CHUNK_SIZE
+        || (params->provision_size > 0 && params->provision_size < params->chunk_size)) {
+        throw ksnp::exception(ksnp_error::KSNP_E_INVALID_ARGUMENT);
     }
 
-    template<typename T>
-    void write_enum(T val)
-    {
-        write_uint(static_cast<typename std::underlying_type_t<T>>(val));
+    json_ptr main_obj(json_object_new_object());
+    auto    *obj = main_obj.get();
+
+    add_stream_id_to_json(obj, json_key_ksid, {params->stream_id});
+    add_uint_to_json(obj, json_key_chunk_size, params->chunk_size);
+    add_uint_to_json(obj, json_key_position, params->position);
+    add_uint_to_json(obj, json_key_max_key_delay, params->max_key_delay);
+    add_rate_to_json(obj, json_key_min_bps, params->min_bps);
+    add_uint_to_json(obj, json_key_provision_size, params->provision_size);
+    add_subobject_to_json(obj, json_key_extensions, params->extensions);
+
+    this->write_json(obj, json_ser_flag::with_length);
+}
+
+void message_context::write_qos_parameters(ksnp_stream_qos_params const *params)
+{
+    if (params == nullptr) {
+        // No JSON payload
+        write_u16(0);
+        return;
     }
 
-    void write_json(json_object *obj, json_ser_flag flag)
-    {
-        size_t      json_len;
-        auto const *json_ptr = check_alloc(json_object_to_json_string_length(obj, JSON_C_TO_STRING_PLAIN, &json_len));
-        std::string_view json(json_ptr, json_len);
-        if (!std::in_range<uint16_t>(json_len)) {
-            throw exception(ksnp_error::KSNP_E_SER_JSON_TOO_LARGE);
-        }
-        if (flag == json_ser_flag::with_length) {
-            this->write_u16(static_cast<uint16_t>(json_len));
-        }
-        this->output_data.append_exact(reinterpret_cast<unsigned char const *>(json.data()), json.size());
+    check_qos_range(params->chunk_size);
+    check_qos_range(params->min_bps);
+    check_qos_range(params->ttl);
+    check_qos_range(params->provision_size);
+
+    if (params->chunk_size.type == ksnp_qos_type::KSNP_QOS_RANGE
+        && params->chunk_size.range.max > KSNP_MAX_CHUNK_SIZE) {
+        throw ksnp::exception(ksnp_error::KSNP_E_INVALID_ARGUMENT);
     }
 
-    void write_message(char const *msg)
-    {
-        if (msg == nullptr) {
-            return;
-        }
-        std::string_view msg_view(msg);
-        this->output_data.append_exact(reinterpret_cast<unsigned char const *>(msg_view.data()), msg_view.size());
-    }
-
-    void write_parameters(ksnp_stream_open_params const *params)
-    {
-        if (params->destination.sae == nullptr || params->chunk_size > KSNP_MAX_CHUNK_SIZE
-            || (params->max_bps.bits > 0 && params->max_bps < params->min_bps)
-            || (params->provision_size > 0 && params->provision_size < params->chunk_size)) {
-            throw ksnp::exception(ksnp_error::KSNP_E_INVALID_ARGUMENT);
-        }
-
-        json_ptr main_obj(json_object_new_object());
-        auto    *obj = main_obj.get();
-
-        add_stream_id_to_json(obj, json_key_ksid, {params->stream_id});
-        add_address_to_json(obj, json_key_source, params->source);
-        add_address_to_json(obj, json_key_destination, params->destination);
-        add_uint_to_json(obj, json_key_chunk_size, params->chunk_size);
-        add_uint_to_json(obj, json_key_capacity, params->capacity);
-        add_rate_to_json(obj, json_key_min_bps, params->min_bps);
-        add_rate_to_json(obj, json_key_max_bps, params->max_bps);
-        add_uint_to_json(obj, json_key_ttl, params->ttl);
-        add_uint_to_json(obj, json_key_provision_size, params->provision_size);
-        add_subobject_to_json(obj, json_key_extensions, params->extensions);
-        add_subobject_to_json(obj, json_key_required_extensions, params->required_extensions);
-
-        this->write_json(obj, json_ser_flag::plain);
-    }
-
-    void write_reply_parameters(ksnp_stream_accepted_params const *params)
-    {
-        if (params->min_bps.bits == 0 || params->chunk_size > KSNP_MAX_CHUNK_SIZE
-            || (params->provision_size > 0 && params->provision_size < params->chunk_size)) {
-            throw ksnp::exception(ksnp_error::KSNP_E_INVALID_ARGUMENT);
-        }
-
-        json_ptr main_obj(json_object_new_object());
-        auto    *obj = main_obj.get();
-
-        add_stream_id_to_json(obj, json_key_ksid, {params->stream_id});
-        add_uint_to_json(obj, json_key_chunk_size, params->chunk_size);
-        add_uint_to_json(obj, json_key_position, params->position);
-        add_uint_to_json(obj, json_key_max_key_delay, params->max_key_delay);
-        add_rate_to_json(obj, json_key_min_bps, params->min_bps);
-        add_uint_to_json(obj, json_key_provision_size, params->provision_size);
-        add_subobject_to_json(obj, json_key_extensions, params->extensions);
-
-        this->write_json(obj, json_ser_flag::with_length);
-    }
-
-    template<typename T>
-    void check_qos_range(T const &qos_value)
-    {
-        if (qos_value.type == ksnp_qos_type::KSNP_QOS_RANGE) {
-            if (qos_value.range.min > qos_value.range.max) {
-                throw ksnp::exception(ksnp_error::KSNP_E_INVALID_ARGUMENT);
-            }
-        }
-    }
-
-    void write_qos_parameters(ksnp_stream_qos_params const *params)
-    {
-        if (params == nullptr) {
-            // No JSON payload
-            write_u16(0);
-            return;
-        }
-
-        check_qos_range(params->chunk_size);
-        check_qos_range(params->min_bps);
-        check_qos_range(params->ttl);
-        check_qos_range(params->provision_size);
-
-        if (params->chunk_size.type == ksnp_qos_type::KSNP_QOS_RANGE
-            && params->chunk_size.range.max > KSNP_MAX_CHUNK_SIZE) {
-            throw ksnp::exception(ksnp_error::KSNP_E_INVALID_ARGUMENT);
-        }
-
-        if (params->chunk_size.type == ksnp_qos_type::KSNP_QOS_LIST) {
+    if (params->chunk_size.type == ksnp_qos_type::KSNP_QOS_LIST) {
 #ifdef __clang__
 #pragma clang unsafe_buffer_usage begin
 #endif
-            auto values = std::span{params->chunk_size.list.values, params->chunk_size.list.count};
+        auto values = std::span{params->chunk_size.list.values, params->chunk_size.list.count};
 #ifdef __clang__
 #pragma clang unsafe_buffer_usage end
 #endif
-            if (std::ranges::any_of(values, [](auto chunk_size) -> bool {
-                    return chunk_size > KSNP_MAX_CHUNK_SIZE;
-                })) {
-                throw ksnp::exception(ksnp_error::KSNP_E_INVALID_ARGUMENT);
-            }
+        if (std::ranges::any_of(values, [](auto chunk_size) -> bool {
+                return chunk_size > KSNP_MAX_CHUNK_SIZE;
+            })) {
+            throw ksnp::exception(ksnp_error::KSNP_E_INVALID_ARGUMENT);
         }
-
-        json_ptr main_obj(json_object_new_object());
-        auto    *obj = main_obj.get();
-
-        add_qos_u16_to_json(obj, json_key_chunk_size, params->chunk_size);
-        add_qos_rate_to_json(obj, json_key_min_bps, params->min_bps);
-        add_qos_u32_to_json(obj, json_key_ttl, params->ttl);
-        add_qos_u32_to_json(obj, json_key_provision_size, params->provision_size);
-        add_subobject_to_json(obj, json_key_extensions, params->extensions);
-
-        this->write_json(obj, json_ser_flag::with_length);
     }
 
-public:
-    ksnp_message_context()
-        : input_storage(vector_buffer())
-        , output_storage(vector_buffer())
-        , input_data(this->input_storage->as_buffer_ptr())
-        , output_data(this->output_storage->as_buffer_ptr())
-        , eof(false)
-    {}
+    json_ptr main_obj(json_object_new_object());
+    auto    *obj = main_obj.get();
 
-    ksnp_message_context(ksnp_buffer *read_buffer,  // NOLINT: bugprone-easily-swappable-parameters
-                         ksnp_buffer *write_buffer)
-        : input_data(read_buffer)
-        , output_data(write_buffer)
-        , eof(false)
-    {}
+    add_qos_u16_to_json(obj, json_key_chunk_size, params->chunk_size);
+    add_qos_rate_to_json(obj, json_key_min_bps, params->min_bps);
+    add_qos_u32_to_json(obj, json_key_ttl, params->ttl);
+    add_qos_u32_to_json(obj, json_key_provision_size, params->provision_size);
+    add_subobject_to_json(obj, json_key_extensions, params->extensions);
 
-    [[nodiscard]] auto want_read() const noexcept -> bool
-    try {
-        if (this->eof) {
-            return false;
-        }
-        auto data = std::span{this->input_data};
+    this->write_json(obj, json_ser_flag::with_length);
+}
 
-        if (this->last_message_len.has_value()) {
-            data = data.subspan(*this->last_message_len);
-        }
+[[nodiscard]] auto message_context::want_read() const noexcept -> bool
+try {
+    if (this->eof) {
+        return false;
+    }
+    auto data = std::span{this->input_data};
 
-        if (data.size() < KSNP_MSG_HEADER_SIZE) {
-            return true;
-        }
+    if (this->last_message_len.has_value()) {
+        data = data.subspan(*this->last_message_len);
+    }
 
-        auto len_data = data.subspan(2, sizeof(uint16_t));
-        auto msg_len  = load_next_u16(len_data);
-        return msg_len > data.size();
-    } catch (...) {
-        // Not enough data for message header
+    if (data.size() < KSNP_MSG_HEADER_SIZE) {
         return true;
     }
 
-    void read_data(std::span<unsigned char const> data, size_t *read)
-    {
-        free_last_message();
-        if (*read == 0) {
-            if (this->eof) {
-                throw exception(ksnp_error::KSNP_E_INVALID_OPERATION);
-            }
-            this->eof = true;
-            return;
+    auto len_data = data.subspan(2, sizeof(uint16_t));
+    auto msg_len  = load_next_u16(len_data);
+    return msg_len > data.size();
+} catch (...) {
+    // Not enough data for message header
+    return true;
+}
+
+void message_context::read_data(std::span<unsigned char const> data, size_t *read)
+{
+    free_last_message();
+    if (*read == 0) {
+        if (this->eof) {
+            throw exception(ksnp_error::KSNP_E_INVALID_OPERATION);
+        }
+        this->eof = true;
+        return;
+    }
+
+    *read = data.size();
+    this->input_data.append(data.data(), read);
+    if (*read < data.size() && this->want_read()) {
+        // If the buffer is full and no message is ready, report an error
+        // as no progress can be made.
+        throw exception(ksnp_error::KSNP_E_INSUFFICIENT_BUFFER);
+    }
+}
+
+[[nodiscard]] auto message_context::want_write() const noexcept -> bool
+{
+    return !this->output_data.empty();
+}
+
+auto message_context::write_data(std::span<unsigned char> data) -> size_t
+{
+    auto to_copy = std::span(this->output_data);
+    if (to_copy.size() > data.size()) {
+        to_copy = to_copy.first(data.size());
+    }
+
+    std::ranges::copy(to_copy, data.begin());
+    this->output_data.consume(to_copy.size());
+    return to_copy.size();
+}
+
+auto message_context::next_message() -> std::optional<message>
+{
+    // Clear previous message first, if any
+    free_last_message();
+
+    auto data = std::span{this->input_data};
+
+    if (data.size() >= KSNP_MSG_HEADER_SIZE) {
+        // Header is complete. Parse it.
+        auto msg_type = load_next_u16(data);
+        auto msg_len  = load_next_u16(data);
+        if (msg_len < KSNP_MSG_HEADER_SIZE) {
+            throw ksnp::protocol_exception(ksnp_error_code::KSNP_PROT_E_BAD_MSG_LENGTH);
         }
 
-        *read = data.size();
-        this->input_data.append(data.data(), read);
-        if (*read < data.size() && this->want_read()) {
-            // If the buffer is full and no message is ready, report an error
-            // as no progress can be made.
-            throw exception(ksnp_error::KSNP_E_INSUFFICIENT_BUFFER);
+        if (data.size() >= msg_len - KSNP_MSG_HEADER_SIZE) {
+            // Message is complete. Parse message body.
+            this->last_message_len = msg_len;
+            return this->parse_message(msg_type, data.first(msg_len - KSNP_MSG_HEADER_SIZE));
         }
     }
 
-    [[nodiscard]] auto want_write() const noexcept -> bool
-    {
-        return !this->output_data.empty();
+    if (this->eof && !data.empty()) {
+        // Receiving channel has been closed, but incomplete message data
+        // is still in the buffer.
+        this->input_data.truncate(0);
+        throw protocol_exception(ksnp_error_code::KSNP_PROT_E_INCOMPLETE_MSG);
     }
 
-    auto write_data(std::span<unsigned char> data) -> size_t
-    {
-        auto to_copy = std::span(this->output_data);
-        if (to_copy.size() > data.size()) {
-            to_copy = to_copy.first(data.size());
-        }
+    return std::nullopt;
+}
 
-        std::ranges::copy(to_copy, data.begin());
-        this->output_data.consume(to_copy.size());
-        return to_copy.size();
+auto message_context::parse_message(uint16_t                 type,  // NOLINT(readability-function-cognitive-complexity)
+                                    std::span<uint8_t const> data) -> message
+{
+    // Partially initialize a message
+    ksnp_message msg = {.type = static_cast<ksnp_message_type>(type), .error = {.code = {}}};
+
+    // Create the union member of the message
+    switch (msg.type) {
+    case ksnp_message_type::KSNP_MSG_ERROR:
+        msg.error = ksnp_msg_error{
+            .code = static_cast<ksnp_error_code>(load_next_u32(data)),
+        };
+        break;
+    case ksnp_message_type::KSNP_MSG_VERSION:
+        msg.version = ksnp_msg_version{
+            .minimum_version = static_cast<ksnp_protocol_version>(load_next_u8(data)),
+            .maximum_version = static_cast<ksnp_protocol_version>(load_next_u8(data)),
+        };
+        if (msg.version.minimum_version > msg.version.maximum_version) {
+            throw ksnp::protocol_exception(ksnp_error_code::KSNP_PROT_E_BAD_JSON_VAL);
+        }
+        break;
+    case ksnp_message_type::KSNP_MSG_OPEN_STREAM: {
+        auto json_params = load_next_json(data, data.size());
+        if (!json_params) {
+            throw ksnp::protocol_exception(ksnp_error_code::KSNP_PROT_E_JSON_MISSING);
+        }
+        this->last_message_payload = json_to_stream_params(*json_params);
+        msg.open_stream            = ::ksnp_msg_open_stream{
+                       .parameters = std::get<stream_open_params>(this->last_message_payload).get_params(),
+        };
+        break;
     }
-
-    auto next_message() -> std::optional<message>
-    {
-        // Clear previous message first, if any
-        free_last_message();
-
-        auto data = std::span{this->input_data};
-
-        if (data.size() >= KSNP_MSG_HEADER_SIZE) {
-            // Header is complete. Parse it.
-            auto msg_type = load_next_u16(data);
-            auto msg_len  = load_next_u16(data);
-            if (msg_len < KSNP_MSG_HEADER_SIZE) {
-                throw ksnp::protocol_exception(ksnp_error_code::KSNP_PROT_E_BAD_MSG_LENGTH);
-            }
-
-            if (data.size() >= msg_len - KSNP_MSG_HEADER_SIZE) {
-                // Message is complete. Parse message body.
-                this->last_message_len = msg_len;
-                return this->parse_message(msg_type, data.first(msg_len - KSNP_MSG_HEADER_SIZE));
-            }
-        }
-
-        if (this->eof && !data.empty()) {
-            // Receiving channel has been closed, but incomplete message data
-            // is still in the buffer.
-            this->input_data.truncate(0);
-            throw protocol_exception(ksnp_error_code::KSNP_PROT_E_INCOMPLETE_MSG);
-        }
-
-        return std::nullopt;
-    }
-
-    auto parse_message(uint16_t                 type,  // NOLINT(readability-function-cognitive-complexity)
-                       std::span<uint8_t const> data) -> message
-    {
-        // Partially initialize a message
-        ksnp_message msg = {.type = static_cast<ksnp_message_type>(type), .error = {.code = {}}};
-
-        // Create the union member of the message
-        switch (msg.type) {
-        case ksnp_message_type::KSNP_MSG_ERROR:
-            msg.error = ksnp_msg_error{
-                .code = static_cast<ksnp_error_code>(load_next_u32(data)),
-            };
-            break;
-        case ksnp_message_type::KSNP_MSG_VERSION:
-            msg.version = ksnp_msg_version{
-                .minimum_version = static_cast<ksnp_protocol_version>(load_next_u8(data)),
-                .maximum_version = static_cast<ksnp_protocol_version>(load_next_u8(data)),
-            };
-            if (msg.version.minimum_version > msg.version.maximum_version) {
-                throw ksnp::protocol_exception(ksnp_error_code::KSNP_PROT_E_BAD_JSON_VAL);
-            }
-            break;
-        case ksnp_message_type::KSNP_MSG_OPEN_STREAM: {
-            auto json_params = load_next_json(data, data.size());
+    case ksnp_message_type::KSNP_MSG_OPEN_STREAM_REPLY: {
+        msg.open_stream_reply = {
+            .code       = load_next_enum<ksnp_status_code>(data),
+            .parameters = {.qos = nullptr},
+            .message    = nullptr,
+        };
+        auto json_len    = load_next_u16(data);
+        auto json_params = load_next_json(data, json_len);
+        if (msg.open_stream_reply.code == ksnp_status_code::KSNP_STATUS_SUCCESS) {
             if (!json_params) {
                 throw ksnp::protocol_exception(ksnp_error_code::KSNP_PROT_E_JSON_MISSING);
             }
-            this->last_message_payload = json_to_stream_params(*json_params);
-            msg.open_stream            = ::ksnp_msg_open_stream{
-                           .parameters = std::get<stream_open_params>(this->last_message_payload).get_params(),
-            };
-            break;
-        }
-        case ksnp_message_type::KSNP_MSG_OPEN_STREAM_REPLY: {
-            msg.open_stream_reply = {
-                .code       = load_next_enum<ksnp_status_code>(data),
-                .parameters = {.qos = nullptr},
-                .message    = nullptr,
-            };
-            auto json_len    = load_next_u16(data);
-            auto json_params = load_next_json(data, json_len);
-            if (msg.open_stream_reply.code == ksnp_status_code::KSNP_STATUS_SUCCESS) {
-                if (!json_params) {
-                    throw ksnp::protocol_exception(ksnp_error_code::KSNP_PROT_E_JSON_MISSING);
-                }
-                this->last_message_payload = json_to_stream_reply_params(*json_params);
-                msg.open_stream_reply.parameters.reply =
-                    std::get<stream_accepted_params>(this->last_message_payload).get_params();
-            } else {
-                if (json_params) {
-                    this->last_message_payload = json_to_stream_qos_params(*json_params);
-                    msg.open_stream_reply.parameters.qos =
-                        std::get<stream_qos_params>(this->last_message_payload).get_params();
-                }
+            this->last_message_payload = json_to_stream_reply_params(*json_params);
+            msg.open_stream_reply.parameters.reply =
+                std::get<stream_accepted_params>(this->last_message_payload).get_params();
+        } else {
+            if (json_params) {
+                this->last_message_payload = json_to_stream_qos_params(*json_params);
+                msg.open_stream_reply.parameters.qos =
+                    std::get<stream_qos_params>(this->last_message_payload).get_params();
+            }
 
-                // Message is only allowed if code != 0. If there is message
-                // data after the JSON parameter for code == 0, we will throw
-                // an unexpected data exception.
-                msg.open_stream_reply.message = load_next_string(data);
+            // Message is only allowed if code != 0. If there is message
+            // data after the JSON parameter for code == 0, we will throw
+            // an unexpected data exception.
+            msg.open_stream_reply.message = load_next_string(data);
+        }
+        break;
+    }
+    case ksnp_message_type::KSNP_MSG_CLOSE_STREAM:
+    case ksnp_message_type::KSNP_MSG_CLOSE_STREAM_REPLY:
+        if (!data.empty()) {
+            throw ksnp::protocol_exception(ksnp_error_code::KSNP_PROT_E_BAD_MSG_LENGTH);
+        }
+        break;
+    case ksnp_message_type::KSNP_MSG_CLOSE_STREAM_NOTIFY:
+        msg.close_stream_notify = ksnp_msg_close_stream_notify{
+            .code    = load_next_enum<ksnp_status_code>(data),
+            .message = load_next_string(data),
+        };
+        break;
+    case ksnp_message_type::KSNP_MSG_SUSPEND_STREAM:
+        msg.suspend_stream = ksnp_msg_suspend_stream{.timeout = load_next_u32(data)};
+        break;
+    case ksnp_message_type::KSNP_MSG_SUSPEND_STREAM_REPLY:
+        msg.suspend_stream_reply = {
+            .code    = load_next_enum<ksnp_status_code>(data),
+            .timeout = load_next_u32(data),
+            .message = nullptr,
+        };
+        // In case of an error, message may be set. If message data is
+        // present even though the status code indicates success, we will
+        // throw an unexpected extra data exception.
+        if (msg.suspend_stream_reply.code != ksnp_status_code::KSNP_STATUS_SUCCESS) {
+            msg.suspend_stream_reply.message = load_next_string(data);
+        }
+        break;
+    case ksnp_message_type::KSNP_MSG_SUSPEND_STREAM_NOTIFY:
+        msg.suspend_stream_notify = {
+            .code    = load_next_enum<ksnp_status_code>(data),
+            .timeout = load_next_u32(data),
+        };
+        break;
+    case ksnp_message_type::KSNP_MSG_KEEP_ALIVE_STREAM:
+        msg.keep_alive_stream = {};
+        if (data.size() != std::size(msg.keep_alive_stream.key_stream_id)) {
+            throw ksnp::protocol_exception(ksnp_error_code::KSNP_PROT_E_BAD_MSG_LENGTH);
+        }
+        std::ranges::copy(data, std::begin(msg.keep_alive_stream.key_stream_id));
+        data = data.subspan(std::size(msg.keep_alive_stream.key_stream_id));
+        break;
+    case ksnp_message_type::KSNP_MSG_KEEP_ALIVE_STREAM_REPLY:
+        msg.keep_alive_stream_reply = ksnp_msg_keep_alive_stream_reply{
+            .code    = load_next_enum<ksnp_status_code>(data),
+            .message = nullptr,
+        };
+        // In case of an error, message may be set. If message data is
+        // present even though the status code indicates success, we will
+        // throw an unexpected extra data exception.
+        if (msg.keep_alive_stream_reply.code != ksnp_status_code::KSNP_STATUS_SUCCESS) {
+            msg.keep_alive_stream_reply.message = load_next_string(data);
+        }
+        break;
+    case ksnp_message_type::KSNP_MSG_CAPACITY_NOTIFY:
+        msg.capacity_notify = ksnp_msg_capacity_notify{.additional_capacity = load_next_u32(data)};
+        break;
+    case ksnp_message_type::KSNP_MSG_KEY_DATA_NOTIFY: {
+        auto data_len = load_next_u16(data);
+        if (data.size() < data_len) {
+            throw ksnp::protocol_exception(ksnp_error_code::KSNP_PROT_E_BAD_MSG_LENGTH);
+        }
+        struct ksnp_data key_data = {.data = data.data(), .len = data_len};
+        data                      = data.subspan(data_len);
+        json_obj payload          = load_next_json(data, data.size());
+        if (payload && json_object_get_type(*payload) != json_type_object) {
+            throw ksnp::protocol_exception(ksnp_error_code::KSNP_PROT_E_BAD_JSON_TYPE);
+        }
+        this->last_message_payload = key_data_parameters(std::move(payload));
+        msg.key_data_notify        = ksnp_msg_key_data_notify{
+                   .key_data   = key_data,
+                   .parameters = std::get<key_data_parameters>(this->last_message_payload).get_parameters(),
+        };
+        break;
+    }
+    case ksnp_message_type::KSNP_MSG_NONE:
+    default:
+        throw ksnp::protocol_exception(ksnp_error_code::KSNP_PROT_E_BAD_MSG_TYPE);
+    }
+
+    if (!data.empty()) {
+        throw ksnp::protocol_exception(ksnp_error_code::KSNP_PROT_E_BAD_MSG_LENGTH, "unexpected extra data");
+    }
+
+    // KSNP_MSG_NONE raises an error, so a value exists.
+    return *ksnp::message::from_message(msg);
+}
+
+void message_context::write_message(  // NOLINT: readability-function-cognitive-complexity
+    struct ksnp_message const *msg)
+{
+    assert(msg != nullptr);
+    auto orig_out_len = this->output_data.size();
+
+    try {
+        // Write message header, with a placeholder for the message length.
+        write_enum(msg->type);
+        write_u16(0);
+
+        // Write message body.
+        switch (msg->type) {
+        case ksnp_message_type::KSNP_MSG_ERROR:
+            write_enum(msg->error.code);
+            break;
+        case ksnp_message_type::KSNP_MSG_VERSION:
+            if (msg->version.minimum_version > msg->version.maximum_version) {
+                throw ksnp::exception(ksnp_error::KSNP_E_INVALID_ARGUMENT);
+            }
+            write_enum(msg->version.minimum_version);
+            write_enum(msg->version.maximum_version);
+            break;
+        case ksnp_message_type::KSNP_MSG_OPEN_STREAM:
+            if (msg->open_stream.parameters == nullptr) {
+                throw ksnp::exception(ksnp_error::KSNP_E_INVALID_ARGUMENT);
+            }
+            write_parameters(msg->open_stream.parameters);
+            break;
+        case ksnp_message_type::KSNP_MSG_OPEN_STREAM_REPLY:
+            write_enum(msg->open_stream_reply.code);
+            if (msg->open_stream_reply.code == ksnp_status_code::KSNP_STATUS_SUCCESS) {
+                if (msg->open_stream_reply.parameters.reply == nullptr) {
+                    throw ksnp::exception(ksnp_error::KSNP_E_INVALID_ARGUMENT);
+                }
+                write_reply_parameters(msg->open_stream_reply.parameters.reply);
+                if (msg->open_stream_reply.message != nullptr) {
+                    throw ksnp::exception(ksnp_error::KSNP_E_INVALID_ARGUMENT);
+                }
+            } else {
+                write_qos_parameters(msg->open_stream_reply.parameters.qos);
+                write_message(msg->open_stream_reply.message);
             }
             break;
-        }
         case ksnp_message_type::KSNP_MSG_CLOSE_STREAM:
         case ksnp_message_type::KSNP_MSG_CLOSE_STREAM_REPLY:
-            if (!data.empty()) {
-                throw ksnp::protocol_exception(ksnp_error_code::KSNP_PROT_E_BAD_MSG_LENGTH);
-            }
             break;
         case ksnp_message_type::KSNP_MSG_CLOSE_STREAM_NOTIFY:
-            msg.close_stream_notify = ksnp_msg_close_stream_notify{
-                .code    = load_next_enum<ksnp_status_code>(data),
-                .message = load_next_string(data),
-            };
+            if (msg->close_stream_notify.code == ksnp_status_code::KSNP_STATUS_SUCCESS
+                && msg->close_stream_notify.message != nullptr) {
+                throw ksnp::exception(ksnp_error::KSNP_E_INVALID_ARGUMENT);
+            }
+            write_enum(msg->close_stream_notify.code);
+            write_message(msg->close_stream_notify.message);
             break;
         case ksnp_message_type::KSNP_MSG_SUSPEND_STREAM:
-            msg.suspend_stream = ksnp_msg_suspend_stream{.timeout = load_next_u32(data)};
+            write_u32(msg->suspend_stream.timeout);
             break;
         case ksnp_message_type::KSNP_MSG_SUSPEND_STREAM_REPLY:
-            msg.suspend_stream_reply = {
-                .code    = load_next_enum<ksnp_status_code>(data),
-                .timeout = load_next_u32(data),
-                .message = nullptr,
-            };
-            // In case of an error, message may be set. If message data is
-            // present even though the status code indicates success, we will
-            // throw an unexpected extra data exception.
-            if (msg.suspend_stream_reply.code != ksnp_status_code::KSNP_STATUS_SUCCESS) {
-                msg.suspend_stream_reply.message = load_next_string(data);
+            if (msg->suspend_stream_reply.code == ksnp_status_code::KSNP_STATUS_SUCCESS
+                && msg->suspend_stream_reply.message != nullptr) {
+                throw ksnp::exception(ksnp_error::KSNP_E_INVALID_ARGUMENT);
             }
+            write_enum(msg->suspend_stream_reply.code);
+            write_u32(msg->suspend_stream_reply.timeout);
+            write_message(msg->suspend_stream_reply.message);
             break;
         case ksnp_message_type::KSNP_MSG_SUSPEND_STREAM_NOTIFY:
-            msg.suspend_stream_notify = {
-                .code    = load_next_enum<ksnp_status_code>(data),
-                .timeout = load_next_u32(data),
-            };
+            write_enum(msg->suspend_stream_reply.code);
+            write_u32(msg->suspend_stream_reply.timeout);
             break;
         case ksnp_message_type::KSNP_MSG_KEEP_ALIVE_STREAM:
-            msg.keep_alive_stream = {};
-            if (data.size() != std::size(msg.keep_alive_stream.key_stream_id)) {
-                throw ksnp::protocol_exception(ksnp_error_code::KSNP_PROT_E_BAD_MSG_LENGTH);
-            }
-            std::ranges::copy(data, std::begin(msg.keep_alive_stream.key_stream_id));
-            data = data.subspan(std::size(msg.keep_alive_stream.key_stream_id));
+            this->output_data.append_exact(std::begin(msg->keep_alive_stream.key_stream_id),
+                                           sizeof(msg->keep_alive_stream.key_stream_id));
             break;
         case ksnp_message_type::KSNP_MSG_KEEP_ALIVE_STREAM_REPLY:
-            msg.keep_alive_stream_reply = ksnp_msg_keep_alive_stream_reply{
-                .code    = load_next_enum<ksnp_status_code>(data),
-                .message = nullptr,
-            };
-            // In case of an error, message may be set. If message data is
-            // present even though the status code indicates success, we will
-            // throw an unexpected extra data exception.
-            if (msg.keep_alive_stream_reply.code != ksnp_status_code::KSNP_STATUS_SUCCESS) {
-                msg.keep_alive_stream_reply.message = load_next_string(data);
+            if (msg->keep_alive_stream_reply.code == ksnp_status_code::KSNP_STATUS_SUCCESS
+                && msg->keep_alive_stream_reply.message != nullptr) {
+                throw ksnp::exception(ksnp_error::KSNP_E_INVALID_ARGUMENT);
             }
+            write_enum(msg->keep_alive_stream_reply.code);
+            write_message(msg->keep_alive_stream_reply.message);
             break;
         case ksnp_message_type::KSNP_MSG_CAPACITY_NOTIFY:
-            msg.capacity_notify = ksnp_msg_capacity_notify{.additional_capacity = load_next_u32(data)};
+            write_u32(msg->capacity_notify.additional_capacity);
             break;
         case ksnp_message_type::KSNP_MSG_KEY_DATA_NOTIFY: {
-            auto data_len = load_next_u16(data);
-            if (data.size() < data_len) {
-                throw ksnp::protocol_exception(ksnp_error_code::KSNP_PROT_E_BAD_MSG_LENGTH);
-            }
-            struct ksnp_data key_data = {.data = data.data(), .len = data_len};
-            data                      = data.subspan(data_len);
-            json_obj payload          = load_next_json(data, data.size());
-            if (payload && json_object_get_type(*payload) != json_type_object) {
+            if (msg->key_data_notify.parameters != nullptr
+                && json_object_get_type(msg->key_data_notify.parameters) != json_type_object) {
                 throw ksnp::protocol_exception(ksnp_error_code::KSNP_PROT_E_BAD_JSON_TYPE);
             }
-            this->last_message_payload = key_data_parameters(std::move(payload));
-            msg.key_data_notify        = ksnp_msg_key_data_notify{
-                       .key_data   = key_data,
-                       .parameters = std::get<key_data_parameters>(this->last_message_payload).get_parameters(),
-            };
+#ifdef __clang__
+#pragma clang unsafe_buffer_usage begin
+#endif
+            std::span key_data(msg->key_data_notify.key_data.data, msg->key_data_notify.key_data.len);
+#ifdef __clang__
+#pragma clang unsafe_buffer_usage end
+#endif
+            write_u16(static_cast<uint16_t>(key_data.size()));
+            this->output_data.append_exact(key_data.data(), key_data.size());
+            if (msg->key_data_notify.parameters != nullptr) {
+                write_json(msg->key_data_notify.parameters, json_ser_flag::plain);
+            }
             break;
         }
         case ksnp_message_type::KSNP_MSG_NONE:
         default:
-            throw ksnp::protocol_exception(ksnp_error_code::KSNP_PROT_E_BAD_MSG_TYPE);
+            throw exception(ksnp_error::KSNP_E_INVALID_MESSAGE_TYPE);
         }
 
-        if (!data.empty()) {
-            throw ksnp::protocol_exception(ksnp_error_code::KSNP_PROT_E_BAD_MSG_LENGTH, "unexpected extra data");
+        // Check that message length fits into a uint16_t.
+        auto msg_len = this->output_data.size() - orig_out_len;
+        if (msg_len > KSNP_MAX_MSG_LEN) {
+            throw ksnp::exception(ksnp_error::KSNP_E_SER_MSG_TOO_LARGE);
         }
-
-        // KSNP_MSG_NONE raises an error, so a value exists.
-        return *ksnp::message::from_message(msg);
+        // Overwrite the placeholder in the output queue by the message length.
+        std::ranges::copy(
+            uint_to_be(static_cast<uint16_t>(msg_len)),
+            std::span{this->output_data}.subspan(orig_out_len + sizeof(uint16_t), sizeof(uint16_t)).begin());
+    } catch (...) {
+        // Erase data inserted into output queue, if any, then rethrow.
+        this->output_data.truncate(orig_out_len);
+        throw;
     }
+}
 
-    void write_message(struct ksnp_message const *msg)  // NOLINT: readability-function-cognitive-complexity
-    {
-        assert(msg != nullptr);
-        auto orig_out_len = this->output_data.size();
+}  // namespace ksnp
 
-        try {
-            // Write message header, with a placeholder for the message length.
-            write_enum(msg->type);
-            write_u16(0);
-
-            // Write message body.
-            switch (msg->type) {
-            case ksnp_message_type::KSNP_MSG_ERROR:
-                write_enum(msg->error.code);
-                break;
-            case ksnp_message_type::KSNP_MSG_VERSION:
-                if (msg->version.minimum_version > msg->version.maximum_version) {
-                    throw ksnp::exception(ksnp_error::KSNP_E_INVALID_ARGUMENT);
-                }
-                write_enum(msg->version.minimum_version);
-                write_enum(msg->version.maximum_version);
-                break;
-            case ksnp_message_type::KSNP_MSG_OPEN_STREAM:
-                if (msg->open_stream.parameters == nullptr) {
-                    throw ksnp::exception(ksnp_error::KSNP_E_INVALID_ARGUMENT);
-                }
-                write_parameters(msg->open_stream.parameters);
-                break;
-            case ksnp_message_type::KSNP_MSG_OPEN_STREAM_REPLY:
-                write_enum(msg->open_stream_reply.code);
-                if (msg->open_stream_reply.code == ksnp_status_code::KSNP_STATUS_SUCCESS) {
-                    if (msg->open_stream_reply.parameters.reply == nullptr) {
-                        throw ksnp::exception(ksnp_error::KSNP_E_INVALID_ARGUMENT);
-                    }
-                    write_reply_parameters(msg->open_stream_reply.parameters.reply);
-                    if (msg->open_stream_reply.message != nullptr) {
-                        throw ksnp::exception(ksnp_error::KSNP_E_INVALID_ARGUMENT);
-                    }
-                } else {
-                    write_qos_parameters(msg->open_stream_reply.parameters.qos);
-                    write_message(msg->open_stream_reply.message);
-                }
-                break;
-            case ksnp_message_type::KSNP_MSG_CLOSE_STREAM:
-            case ksnp_message_type::KSNP_MSG_CLOSE_STREAM_REPLY:
-                break;
-            case ksnp_message_type::KSNP_MSG_CLOSE_STREAM_NOTIFY:
-                if (msg->close_stream_notify.code == ksnp_status_code::KSNP_STATUS_SUCCESS
-                    && msg->close_stream_notify.message != nullptr) {
-                    throw ksnp::exception(ksnp_error::KSNP_E_INVALID_ARGUMENT);
-                }
-                write_enum(msg->close_stream_notify.code);
-                write_message(msg->close_stream_notify.message);
-                break;
-            case ksnp_message_type::KSNP_MSG_SUSPEND_STREAM:
-                write_u32(msg->suspend_stream.timeout);
-                break;
-            case ksnp_message_type::KSNP_MSG_SUSPEND_STREAM_REPLY:
-                if (msg->suspend_stream_reply.code == ksnp_status_code::KSNP_STATUS_SUCCESS
-                    && msg->suspend_stream_reply.message != nullptr) {
-                    throw ksnp::exception(ksnp_error::KSNP_E_INVALID_ARGUMENT);
-                }
-                write_enum(msg->suspend_stream_reply.code);
-                write_u32(msg->suspend_stream_reply.timeout);
-                write_message(msg->suspend_stream_reply.message);
-                break;
-            case ksnp_message_type::KSNP_MSG_SUSPEND_STREAM_NOTIFY:
-                write_enum(msg->suspend_stream_reply.code);
-                write_u32(msg->suspend_stream_reply.timeout);
-                break;
-            case ksnp_message_type::KSNP_MSG_KEEP_ALIVE_STREAM:
-                this->output_data.append_exact(std::begin(msg->keep_alive_stream.key_stream_id),
-                                               sizeof(msg->keep_alive_stream.key_stream_id));
-                break;
-            case ksnp_message_type::KSNP_MSG_KEEP_ALIVE_STREAM_REPLY:
-                if (msg->keep_alive_stream_reply.code == ksnp_status_code::KSNP_STATUS_SUCCESS
-                    && msg->keep_alive_stream_reply.message != nullptr) {
-                    throw ksnp::exception(ksnp_error::KSNP_E_INVALID_ARGUMENT);
-                }
-                write_enum(msg->keep_alive_stream_reply.code);
-                write_message(msg->keep_alive_stream_reply.message);
-                break;
-            case ksnp_message_type::KSNP_MSG_CAPACITY_NOTIFY:
-                write_u32(msg->capacity_notify.additional_capacity);
-                break;
-            case ksnp_message_type::KSNP_MSG_KEY_DATA_NOTIFY: {
-                if (msg->key_data_notify.parameters != nullptr
-                    && json_object_get_type(msg->key_data_notify.parameters) != json_type_object) {
-                    throw ksnp::exception(ksnp_error::KSNP_E_INVALID_ARGUMENT);
-                }
-#ifdef __clang__
-#pragma clang unsafe_buffer_usage begin
-#endif
-                std::span key_data(msg->key_data_notify.key_data.data, msg->key_data_notify.key_data.len);
-#ifdef __clang__
-#pragma clang unsafe_buffer_usage end
-#endif
-                write_u16(static_cast<uint16_t>(key_data.size()));
-                this->output_data.append_exact(key_data.data(), key_data.size());
-                if (msg->key_data_notify.parameters != nullptr) {
-                    write_json(msg->key_data_notify.parameters, json_ser_flag::plain);
-                }
-                break;
-            }
-            case ksnp_message_type::KSNP_MSG_NONE:
-            default:
-                throw exception(ksnp_error::KSNP_E_INVALID_MESSAGE_TYPE);
-            }
-
-            // Check that message length fits into a uint16_t.
-            auto msg_len = this->output_data.size() - orig_out_len;
-            if (msg_len > KSNP_MAX_MSG_LEN) {
-                throw ksnp::exception(ksnp_error::KSNP_E_SER_MSG_TOO_LARGE);
-            }
-            // Overwrite the placeholder in the output queue by the message length.
-            std::ranges::copy(
-                uint_to_be(static_cast<uint16_t>(msg_len)),
-                std::span{this->output_data}.subspan(orig_out_len + sizeof(uint16_t), sizeof(uint16_t)).begin());
-        } catch (...) {
-            // Erase data inserted into output queue, if any, then rethrow.
-            this->output_data.truncate(orig_out_len);
-            throw;
-        }
-    }
+struct ksnp_message_context : public ksnp::message_context {
+    using ksnp::message_context::message_context;
 };
 
 auto ksnp_message_context_create(struct ksnp_message_context **context) noexcept -> ksnp_error
