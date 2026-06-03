@@ -475,14 +475,12 @@ auto simple_stream::next_chunk() -> std::optional<std::span<uint8_t const>>
 }
 
 auto ksnp_simple_stream_create(ksnp_stream **stream_ptr, uint16_t chunk_size) noexcept -> ksnp_error
-{
-    try {
-        auto *stream = new struct simple_stream(chunk_size);
-        *stream_ptr  = stream;
-        return ksnp_error::KSNP_E_NO_ERROR;
-    }
-    CATCH_ALL
+try {
+    auto *stream = new struct simple_stream(chunk_size);
+    *stream_ptr  = stream;
+    return ksnp_error::KSNP_E_NO_ERROR;
 }
+CATCH_ALL
 
 void ksnp_simple_stream_destroy(ksnp_stream *stream) noexcept
 {
@@ -490,20 +488,18 @@ void ksnp_simple_stream_destroy(ksnp_stream *stream) noexcept
 }
 
 auto ksnp_simple_stream_add_key_data(ksnp_stream *stream, ksnp_data key_data) noexcept -> ksnp_error
-{
-    try {
+try {
 #ifdef __clang__
 #pragma clang unsafe_buffer_usage begin
 #endif
-        auto key_buffer = std::span(key_data.data, key_data.len);
+    auto key_buffer = std::span(key_data.data, key_data.len);
 #ifdef __clang__
 #pragma clang unsafe_buffer_usage end
 #endif
-        static_cast<simple_stream *>(stream)->add_key_data(key_buffer);
-        return ksnp_error::KSNP_E_NO_ERROR;
-    }
-    CATCH_ALL
+    static_cast<simple_stream *>(stream)->add_key_data(key_buffer);
+    return ksnp_error::KSNP_E_NO_ERROR;
 }
+CATCH_ALL
 
 auto simple_stream::stream_has_chunk(ksnp_stream const *stream) noexcept -> bool
 {
@@ -513,22 +509,20 @@ auto simple_stream::stream_has_chunk(ksnp_stream const *stream) noexcept -> bool
 
 auto simple_stream::stream_next_chunk(ksnp_stream *stream, struct ksnp_data *data, uint16_t max_count) noexcept
     -> ksnp_error
-{
+try {
     // Always returns exactly 1 chunk.
     (void)max_count;
 
-    try {
-        if (auto chunk = static_cast<simple_stream *>(stream)->next_chunk(); chunk.has_value()) {
-            data->data = const_cast<unsigned char *>(chunk->data());
-            data->len  = static_cast<uint32_t>(chunk->size());
-        } else {
-            data->data = nullptr;
-            data->len  = 0;
-        }
-        return ksnp_error::KSNP_E_NO_ERROR;
+    if (auto chunk = static_cast<simple_stream *>(stream)->next_chunk(); chunk.has_value()) {
+        data->data = const_cast<unsigned char *>(chunk->data());
+        data->len  = static_cast<uint32_t>(chunk->size());
+    } else {
+        data->data = nullptr;
+        data->len  = 0;
     }
-    CATCH_ALL
+    return ksnp_error::KSNP_E_NO_ERROR;
 }
+CATCH_ALL
 
 auto ksnp_server_create(struct ksnp_server **server, ksnp_message_context *ctx) noexcept -> ksnp_error
 try {
@@ -549,33 +543,29 @@ auto ksnp_server_want_read(struct ksnp_server const *server) noexcept -> bool
 }
 
 auto ksnp_server_read_data(struct ksnp_server *server, uint8_t const *data, size_t *len) noexcept -> ksnp_error
-{
-    try {
+try {
 #ifdef __clang__
 #pragma clang unsafe_buffer_usage begin
 #endif
-        auto buffer = std::span{data, *len};
+    auto buffer = std::span{data, *len};
 #ifdef __clang__
 #pragma clang unsafe_buffer_usage end
 #endif
-        *len = server->read_data(buffer);
-        return ksnp_error::KSNP_E_NO_ERROR;
-    }
-    CATCH_ALL
+    *len = server->read_data(buffer);
+    return ksnp_error::KSNP_E_NO_ERROR;
 }
+CATCH_ALL
 
 auto ksnp_server_next_event(struct ksnp_server *server, ksnp_server_event *event) noexcept -> ksnp_error
-{
-    try {
-        if (auto evt = server->next_event(); evt.has_value()) {
-            *event = into_event(*evt);
-        } else {
-            *event = ::ksnp_server_event{.type = ksnp_server_event_type::KSNP_SERVER_EVENT_NONE, .none = {}};
-        }
-        return ksnp_error::KSNP_E_NO_ERROR;
+try {
+    if (auto evt = server->next_event(); evt.has_value()) {
+        *event = into_event(*evt);
+    } else {
+        *event = ::ksnp_server_event{.type = ksnp_server_event_type::KSNP_SERVER_EVENT_NONE, .none = {}};
     }
-    CATCH_ALL
+    return ksnp_error::KSNP_E_NO_ERROR;
 }
+CATCH_ALL
 
 auto ksnp_server_want_write(struct ksnp_server const *server) noexcept -> bool
 {
@@ -590,72 +580,60 @@ try {
 CATCH_ALL
 
 auto ksnp_server_write_data(struct ksnp_server *server, uint8_t *data, size_t *len) noexcept -> ksnp_error
-{
-    try {
+try {
 #ifdef __clang__
 #pragma clang unsafe_buffer_usage begin
 #endif
-        auto buffer = std::span{data, *len};
+    auto buffer = std::span{data, *len};
 #ifdef __clang__
 #pragma clang unsafe_buffer_usage end
 #endif
-        *len = server->write_data(buffer);
-        return ksnp_error::KSNP_E_NO_ERROR;
-    }
-    CATCH_ALL
+    *len = server->write_data(buffer);
+    return ksnp_error::KSNP_E_NO_ERROR;
 }
+CATCH_ALL
 
 auto ksnp_server_open_stream_ok(struct ksnp_server                       *server,
                                 struct ksnp_stream                       *stream,
                                 struct ksnp_stream_accepted_params const *params) noexcept -> ksnp_error
-{
-    try {
-        server->open_stream_ok(stream, params);
-        return ksnp_error::KSNP_E_NO_ERROR;
-    }
-    CATCH_ALL
+try {
+    server->open_stream_ok(stream, params);
+    return ksnp_error::KSNP_E_NO_ERROR;
 }
+CATCH_ALL
 
 auto ksnp_server_open_stream_fail(struct ksnp_server                  *server,
                                   ksnp_status_code                     reason,
                                   struct ksnp_stream_qos_params const *params,
                                   char const                          *message) noexcept -> ksnp_error
-{
-    try {
-        server->open_stream_fail(reason, params, message);
-        return ksnp_error::KSNP_E_NO_ERROR;
-    }
-    CATCH_ALL
+try {
+    server->open_stream_fail(reason, params, message);
+    return ksnp_error::KSNP_E_NO_ERROR;
 }
+CATCH_ALL
 
 auto ksnp_server_close_stream(struct ksnp_server *server, struct ksnp_stream **stream) noexcept -> ksnp_error
-{
-    try {
-        *stream = server->close_stream();
-        return ksnp_error::KSNP_E_NO_ERROR;
-    }
-    CATCH_ALL
+try {
+    *stream = server->close_stream();
+    return ksnp_error::KSNP_E_NO_ERROR;
 }
+CATCH_ALL
 
 auto ksnp_server_suspend_stream_ok(struct ksnp_server *server, uint32_t timeout, struct ksnp_stream **stream) noexcept
     -> ksnp_error
-{
-    try {
-        *stream = server->suspend_stream_ok(timeout);
-        return ksnp_error::KSNP_E_NO_ERROR;
-    }
-    CATCH_ALL
+try {
+    *stream = server->suspend_stream_ok(timeout);
+    return ksnp_error::KSNP_E_NO_ERROR;
 }
+CATCH_ALL
 
 auto ksnp_server_suspend_stream_fail(struct ksnp_server *server, ksnp_status_code reason, char const *message) noexcept
     -> ksnp_error
-{
-    try {
-        server->suspend_stream_fail(reason, message);
-        return ksnp_error::KSNP_E_NO_ERROR;
-    }
-    CATCH_ALL
+try {
+    server->suspend_stream_fail(reason, message);
+    return ksnp_error::KSNP_E_NO_ERROR;
 }
+CATCH_ALL
 
 auto ksnp_server_current_stream(struct ksnp_server const *server) noexcept -> ksnp_stream *
 {
@@ -663,23 +641,19 @@ auto ksnp_server_current_stream(struct ksnp_server const *server) noexcept -> ks
 }
 
 auto ksnp_server_keep_alive_ok(struct ksnp_server *server) noexcept -> ksnp_error
-{
-    try {
-        server->keep_alive_ok();
-        return ksnp_error::KSNP_E_NO_ERROR;
-    }
-    CATCH_ALL
+try {
+    server->keep_alive_ok();
+    return ksnp_error::KSNP_E_NO_ERROR;
 }
+CATCH_ALL
 
 auto ksnp_server_keep_alive_fail(struct ksnp_server *server, ksnp_status_code reason, char const *message) noexcept
     -> ksnp_error
-{
-    try {
-        server->keep_alive_fail(reason, message);
-        return ksnp_error::KSNP_E_NO_ERROR;
-    }
-    CATCH_ALL
+try {
+    server->keep_alive_fail(reason, message);
+    return ksnp_error::KSNP_E_NO_ERROR;
 }
+CATCH_ALL
 
 auto ksnp_server_close_connection(struct ksnp_server *server, ksnp_close_direction dir) noexcept -> ksnp_error
 try {
