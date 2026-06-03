@@ -340,7 +340,7 @@ public:
 
     [[nodiscard]] auto want_read() const noexcept -> bool;
 
-    void read_data(std::span<unsigned char const> data, size_t *read);
+    auto read_data(std::span<unsigned char const> data) -> size_t;
 
     [[nodiscard]] auto want_write() const noexcept -> bool;
 
@@ -350,7 +350,13 @@ public:
 
     auto parse_message(std::uint16_t type, std::span<unsigned char const> data) -> message;
 
-    void write_message(struct ksnp_message const *msg);
+    void write_message(struct ksnp_message const *message);
+
+    void write_message(message const &message)
+    {
+        auto raw_message = message.into_message();
+        this->write_message(&raw_message);
+    }
 };
 
 }  // namespace ksnp

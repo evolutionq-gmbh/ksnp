@@ -1034,24 +1034,26 @@ try {
     return true;
 }
 
-void message_context::read_data(std::span<unsigned char const> data, size_t *read)
+auto message_context::read_data(std::span<unsigned char const> data) -> size_t
 {
     free_last_message();
-    if (*read == 0) {
+    if (data.empty()) {
         if (this->eof) {
             throw exception(ksnp_error::KSNP_E_INVALID_OPERATION);
         }
         this->eof = true;
-        return;
+        return 0;
     }
 
-    *read = data.size();
-    this->input_data.append(data.data(), read);
-    if (*read < data.size() && this->want_read()) {
+    size_t appended = data.size();
+    this->input_data.append(data.data(), &appended);
+    if (appended < data.size() && this->want_read()) {
         // If the buffer is full and no message is ready, report an error
         // as no progress can be made.
         throw exception(ksnp_error::KSNP_E_INSUFFICIENT_BUFFER);
     }
+
+    return appended;
 }
 
 [[nodiscard]] auto message_context::want_write() const noexcept -> bool
@@ -1254,107 +1256,107 @@ auto message_context::parse_message(uint16_t                 type,  // NOLINT(re
 }
 
 void message_context::write_message(  // NOLINT: readability-function-cognitive-complexity
-    struct ksnp_message const *msg)
+    struct ksnp_message const *message)
 {
-    assert(msg != nullptr);
+    assert(message != nullptr);
     auto orig_out_len = this->output_data.size();
 
     try {
         // Write message header, with a placeholder for the message length.
-        write_enum(msg->type);
+        write_enum(message->type);
         write_u16(0);
 
         // Write message body.
-        switch (msg->type) {
+        switch (message->type) {
         case ksnp_message_type::KSNP_MSG_ERROR:
-            write_enum(msg->error.code);
+            write_enum(message->error.code);
             break;
         case ksnp_message_type::KSNP_MSG_VERSION:
-            if (msg->version.minimum_version > msg->version.maximum_version) {
+            if (message->version.minimum_version > message->version.maximum_version) {
                 throw ksnp::exception(ksnp_error::KSNP_E_INVALID_ARGUMENT);
             }
-            write_enum(msg->version.minimum_version);
-            write_enum(msg->version.maximum_version);
+            write_enum(message->version.minimum_version);
+            write_enum(message->version.maximum_version);
             break;
         case ksnp_message_type::KSNP_MSG_OPEN_STREAM:
-            if (msg->open_stream.parameters == nullptr) {
+            if (message->open_stream.parameters == nullptr) {
                 throw ksnp::exception(ksnp_error::KSNP_E_INVALID_ARGUMENT);
             }
-            write_parameters(msg->open_stream.parameters);
+            write_parameters(message->open_stream.parameters);
             break;
         case ksnp_message_type::KSNP_MSG_OPEN_STREAM_REPLY:
-            write_enum(msg->open_stream_reply.code);
-            if (msg->open_stream_reply.code == ksnp_status_code::KSNP_STATUS_SUCCESS) {
-                if (msg->open_stream_reply.parameters.reply == nullptr) {
+            write_enum(message->open_stream_reply.code);
+            if (message->open_stream_reply.code == ksnp_status_code::KSNP_STATUS_SUCCESS) {
+                if (message->open_stream_reply.parameters.reply == nullptr) {
                     throw ksnp::exception(ksnp_error::KSNP_E_INVALID_ARGUMENT);
                 }
-                write_reply_parameters(msg->open_stream_reply.parameters.reply);
-                if (msg->open_stream_reply.message != nullptr) {
+                write_reply_parameters(message->open_stream_reply.parameters.reply);
+                if (message->open_stream_reply.message != nullptr) {
                     throw ksnp::exception(ksnp_error::KSNP_E_INVALID_ARGUMENT);
                 }
             } else {
-                write_qos_parameters(msg->open_stream_reply.parameters.qos);
-                write_message(msg->open_stream_reply.message);
+                write_qos_parameters(message->open_stream_reply.parameters.qos);
+                write_message(message->open_stream_reply.message);
             }
             break;
         case ksnp_message_type::KSNP_MSG_CLOSE_STREAM:
         case ksnp_message_type::KSNP_MSG_CLOSE_STREAM_REPLY:
             break;
         case ksnp_message_type::KSNP_MSG_CLOSE_STREAM_NOTIFY:
-            if (msg->close_stream_notify.code == ksnp_status_code::KSNP_STATUS_SUCCESS
-                && msg->close_stream_notify.message != nullptr) {
+            if (message->close_stream_notify.code == ksnp_status_code::KSNP_STATUS_SUCCESS
+                && message->close_stream_notify.message != nullptr) {
                 throw ksnp::exception(ksnp_error::KSNP_E_INVALID_ARGUMENT);
             }
-            write_enum(msg->close_stream_notify.code);
-            write_message(msg->close_stream_notify.message);
+            write_enum(message->close_stream_notify.code);
+            write_message(message->close_stream_notify.message);
             break;
         case ksnp_message_type::KSNP_MSG_SUSPEND_STREAM:
-            write_u32(msg->suspend_stream.timeout);
+            write_u32(message->suspend_stream.timeout);
             break;
         case ksnp_message_type::KSNP_MSG_SUSPEND_STREAM_REPLY:
-            if (msg->suspend_stream_reply.code == ksnp_status_code::KSNP_STATUS_SUCCESS
-                && msg->suspend_stream_reply.message != nullptr) {
+            if (message->suspend_stream_reply.code == ksnp_status_code::KSNP_STATUS_SUCCESS
+                && message->suspend_stream_reply.message != nullptr) {
                 throw ksnp::exception(ksnp_error::KSNP_E_INVALID_ARGUMENT);
             }
-            write_enum(msg->suspend_stream_reply.code);
-            write_u32(msg->suspend_stream_reply.timeout);
-            write_message(msg->suspend_stream_reply.message);
+            write_enum(message->suspend_stream_reply.code);
+            write_u32(message->suspend_stream_reply.timeout);
+            write_message(message->suspend_stream_reply.message);
             break;
         case ksnp_message_type::KSNP_MSG_SUSPEND_STREAM_NOTIFY:
-            write_enum(msg->suspend_stream_reply.code);
-            write_u32(msg->suspend_stream_reply.timeout);
+            write_enum(message->suspend_stream_reply.code);
+            write_u32(message->suspend_stream_reply.timeout);
             break;
         case ksnp_message_type::KSNP_MSG_KEEP_ALIVE_STREAM:
-            this->output_data.append_exact(std::begin(msg->keep_alive_stream.key_stream_id),
-                                           sizeof(msg->keep_alive_stream.key_stream_id));
+            this->output_data.append_exact(std::begin(message->keep_alive_stream.key_stream_id),
+                                           sizeof(message->keep_alive_stream.key_stream_id));
             break;
         case ksnp_message_type::KSNP_MSG_KEEP_ALIVE_STREAM_REPLY:
-            if (msg->keep_alive_stream_reply.code == ksnp_status_code::KSNP_STATUS_SUCCESS
-                && msg->keep_alive_stream_reply.message != nullptr) {
+            if (message->keep_alive_stream_reply.code == ksnp_status_code::KSNP_STATUS_SUCCESS
+                && message->keep_alive_stream_reply.message != nullptr) {
                 throw ksnp::exception(ksnp_error::KSNP_E_INVALID_ARGUMENT);
             }
-            write_enum(msg->keep_alive_stream_reply.code);
-            write_message(msg->keep_alive_stream_reply.message);
+            write_enum(message->keep_alive_stream_reply.code);
+            write_message(message->keep_alive_stream_reply.message);
             break;
         case ksnp_message_type::KSNP_MSG_CAPACITY_NOTIFY:
-            write_u32(msg->capacity_notify.additional_capacity);
+            write_u32(message->capacity_notify.additional_capacity);
             break;
         case ksnp_message_type::KSNP_MSG_KEY_DATA_NOTIFY: {
-            if (msg->key_data_notify.parameters != nullptr
-                && json_object_get_type(msg->key_data_notify.parameters) != json_type_object) {
+            if (message->key_data_notify.parameters != nullptr
+                && json_object_get_type(message->key_data_notify.parameters) != json_type_object) {
                 throw ksnp::protocol_exception(ksnp_error_code::KSNP_PROT_E_BAD_JSON_TYPE);
             }
 #ifdef __clang__
 #pragma clang unsafe_buffer_usage begin
 #endif
-            std::span key_data(msg->key_data_notify.key_data.data, msg->key_data_notify.key_data.len);
+            std::span key_data(message->key_data_notify.key_data.data, message->key_data_notify.key_data.len);
 #ifdef __clang__
 #pragma clang unsafe_buffer_usage end
 #endif
             write_u16(static_cast<uint16_t>(key_data.size()));
             this->output_data.append_exact(key_data.data(), key_data.size());
-            if (msg->key_data_notify.parameters != nullptr) {
-                write_json(msg->key_data_notify.parameters, json_ser_flag::plain);
+            if (message->key_data_notify.parameters != nullptr) {
+                write_json(message->key_data_notify.parameters, json_ser_flag::plain);
             }
             break;
         }
@@ -1416,6 +1418,11 @@ auto ksnp_message_context_want_read(struct ksnp_message_context *ctx) noexcept -
 auto ksnp_message_context_read_data(struct ksnp_message_context *ctx, unsigned char const *data, size_t *len) noexcept
     -> ksnp_error
 try {
+    if (*len == 0) {
+        ctx->read_data({});
+        return ksnp_error::KSNP_E_NO_ERROR;
+    }
+
 #ifdef __clang__
 #pragma clang unsafe_buffer_usage begin
 #endif
@@ -1423,7 +1430,7 @@ try {
 #ifdef __clang__
 #pragma clang unsafe_buffer_usage end
 #endif
-    ctx->read_data(buffer, len);
+    *len = ctx->read_data(buffer);
     return ksnp_error::KSNP_E_NO_ERROR;
 }
 CATCH_ALL
