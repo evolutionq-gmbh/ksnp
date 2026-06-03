@@ -36,8 +36,7 @@ BOOST_AUTO_TEST_CASE(test_message_context_basics)
     BOOST_TEST(!ctx.next_event().has_value());
     BOOST_TEST(ctx.write_data({write_buffer}) == 0);
 
-    auto raw_msg = into_message(version_message);
-    ctx.write_message(&raw_msg);
+    ctx.write_message(version_message);
     BOOST_TEST(ctx.want_write());
     BOOST_TEST(ctx.write_data({write_buffer}) == 6);
     BOOST_TEST(std::ranges::equal(std::span(write_buffer).first(6), std::span(version_data)));
@@ -68,10 +67,9 @@ BOOST_AUTO_TEST_CASE(test_message_context_multiple)
     std::array<unsigned char, 6> const version_data{0, 1, 0, 6, 1, 1};
 
     // Write three messages
-    auto raw_msg = into_message(version_message);
-    ctx.write_message(&raw_msg);
-    ctx.write_message(&raw_msg);
-    ctx.write_message(&raw_msg);
+    ctx.write_message(version_message);
+    ctx.write_message(version_message);
+    ctx.write_message(version_message);
     BOOST_TEST(ctx.want_write());
     BOOST_TEST(ctx.write_data(std::span{write_buffer}.first(6)) == 6);
     BOOST_TEST(ctx.want_write());
@@ -149,10 +147,8 @@ BOOST_AUTO_TEST_CASE(test_message_context_partial_write)
     };
     std::array<unsigned char, 6> const version_data{0, 1, 0, 6, 1, 1};
 
-    auto raw_msg = into_message(version_message);
-
     // Write one message byte for byte, should want writing until complete
-    ctx.write_message(&raw_msg);
+    ctx.write_message(version_message);
     for (size_t i = 0; i < version_data.size() - 1; i++) {
         BOOST_TEST(ctx.write_data(std::span{write_buffer}.first(1)) == 1);
         BOOST_TEST(ctx.want_write());
@@ -162,10 +158,10 @@ BOOST_AUTO_TEST_CASE(test_message_context_partial_write)
     BOOST_TEST(!ctx.want_write());
 
     // Write one message partially, add another, both should be complete
-    ctx.write_message(&raw_msg);
+    ctx.write_message(version_message);
     BOOST_TEST(ctx.write_data(std::span{write_buffer}.first(version_data.size() / 2)) == version_data.size() / 2);
     BOOST_TEST(ctx.want_write());
-    ctx.write_message(&raw_msg);
+    ctx.write_message(version_message);
     BOOST_TEST(ctx.want_write());
     BOOST_TEST(ctx.write_data(std::span{write_buffer}) == (version_data.size() * 2) - (version_data.size() / 2));
     BOOST_TEST(!ctx.want_write());
@@ -529,8 +525,7 @@ BOOST_DATA_TEST_CASE(test_serde_rt, boost::unit_test::data::make(good_messages),
     BOOST_REQUIRE(ctx.want_read());
     BOOST_REQUIRE(!ctx.want_write());
 
-    auto raw_msg = ksnp::into_message(message);
-    ctx.write_message(&raw_msg);
+    ctx.write_message(message);
     auto written = ctx.write_data(write_buffer);
     BOOST_REQUIRE(ctx.read_data(write_buffer.first(written)) == written);
 
@@ -546,8 +541,7 @@ BOOST_DATA_TEST_CASE(test_serializer_bad_input, boost::unit_test::data::make(bad
     BOOST_REQUIRE(ctx.want_read());
     BOOST_REQUIRE(!ctx.want_write());
 
-    auto raw_msg = ksnp::into_message(message);
-    BOOST_CHECK_THROW(ctx.write_message(&raw_msg), ksnp_exception);
+    BOOST_CHECK_THROW(ctx.write_message(message), ksnp_exception);
 }
 
 BOOST_DATA_TEST_CASE(test_parser_bad_input, boost::unit_test::data::make(bad_parser_input), input)

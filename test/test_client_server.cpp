@@ -10,7 +10,6 @@
 #include "common.hpp"
 #include "helpers.hpp"
 #include "ksnp/client.h"
-#include "ksnp/serde.h"
 #include "ksnp/server.h"
 #include "ksnp/types.h"
 #include "test_helpers.hpp"  // IWYU pragma: keep; false positive
@@ -114,12 +113,12 @@ BOOST_AUTO_TEST_CASE(test_connection_handshake)
 
     // Additional version messages trigger an error on the other side after
     // processing.
-    ksnp_message ver_msg = ksnp::into_message(ksnp_msg_version{
+    ksnp::message ver_msg(ksnp_msg_version{
         .minimum_version = ksnp_protocol_version::PROTOCOL_V1,
         .maximum_version = ksnp_protocol_version::PROTOCOL_V1,
     });
-    BOOST_CHECK_NO_THROW(conn.client_message_context().write_message(&ver_msg));
-    BOOST_CHECK_NO_THROW(conn.server_message_context().write_message(&ver_msg));
+    BOOST_CHECK_NO_THROW(conn.client_message_context().write_message(ver_msg));
+    BOOST_CHECK_NO_THROW(conn.server_message_context().write_message(ver_msg));
     conn.complete_io();
 
     auto client_event = ksnp::client_event{
@@ -150,10 +149,10 @@ BOOST_AUTO_TEST_CASE(test_connection_error)
 
     conn.complete_handshake();
 
-    ksnp_message err_msg = ksnp::into_message(ksnp_msg_error{
+    ksnp::message err_msg(ksnp_msg_error{
         .code = ksnp_error_code::KSNP_PROT_E_UNKNOWN_ERROR,
     });
-    BOOST_CHECK_NO_THROW(conn.client_message_context().write_message(&err_msg));
+    BOOST_CHECK_NO_THROW(conn.client_message_context().write_message(err_msg));
 
     conn.complete_io();
     auto server_event = ksnp::server_event{
@@ -179,11 +178,11 @@ BOOST_AUTO_TEST_CASE(test_connection_wrong_message)
 
     conn.complete_handshake();
 
-    ksnp_message err_msg = ksnp::into_message(ksnp_msg_close_stream_notify{
+    ksnp::message err_msg(ksnp_msg_close_stream_notify{
         .code    = ksnp_status_code::KSNP_STATUS_SUCCESS,
         .message = nullptr,
     });
-    BOOST_CHECK_NO_THROW(conn.client_message_context().write_message(&err_msg));
+    BOOST_CHECK_NO_THROW(conn.client_message_context().write_message(err_msg));
 
     conn.complete_io();
     auto client_event = ksnp::client_event{
@@ -289,8 +288,9 @@ BOOST_AUTO_TEST_CASE(test_connection_client_over_capacity)
     BOOST_CHECK_EXCEPTION(conn.client().add_capacity(1), ksnp_exception, [](auto const &exc) -> bool {
         return exc.error() == ksnp_error::KSNP_E_INVALID_ARGUMENT;
     });
-    auto raw_message = ksnp::into_message(ksnp::message{::ksnp_msg_capacity_notify{.additional_capacity = 1}});
-    conn.client_message_context().write_message(&raw_message);
+
+    ksnp::message capacity_message{::ksnp_msg_capacity_notify{.additional_capacity = 1}};
+    conn.client_message_context().write_message(capacity_message);
     conn.complete_io();
     auto server_event = ksnp::server_event{
         ::ksnp_server_event_error{
@@ -385,11 +385,11 @@ BOOST_AUTO_TEST_CASE(test_connection_client_chunk_size)
     BOOST_CHECK(conn.client().next_event() == ksnp::client_event{key_event});
 
     // Insert non chunk-sized key data into stream, expect protocol error
-    auto chunk_msg = ksnp::into_message(ksnp_msg_key_data_notify{
+    ksnp::message chunk_msg(ksnp_msg_key_data_notify{
         .key_data = ksnp_data{.data = key_source.data(), .len = CHUNK_SIZE + 1},
           .parameters = nullptr
     });
-    conn.server_message_context().write_message(&chunk_msg);
+    conn.server_message_context().write_message(chunk_msg);
     conn.complete_io();
 
     auto client_event = ksnp::client_event{

@@ -18,6 +18,84 @@ Single connection context
 
 using namespace ksnp;
 
+namespace ksnp
+{
+
+auto server_event::into_event() const noexcept -> ksnp_server_event
+{
+    auto const visitor = overloads{
+        [](ksnp_server_event_handshake evt) -> ksnp_server_event {
+            return ksnp_server_event{
+                .type      = ksnp_server_event_type::KSNP_SERVER_EVENT_HANDSHAKE,
+                .handshake = evt,
+            };
+        },
+        [](ksnp_server_event_open_stream evt) -> ksnp_server_event {
+            return ksnp_server_event{
+                .type        = ksnp_server_event_type::KSNP_SERVER_EVENT_OPEN_STREAM,
+                .open_stream = evt,
+            };
+        },
+        [](ksnp_server_event_close_stream evt) -> ksnp_server_event {
+            return ksnp_server_event{
+                .type         = ksnp_server_event_type::KSNP_SERVER_EVENT_CLOSE_STREAM,
+                .close_stream = evt,
+            };
+        },
+        [](ksnp_server_event_suspend_stream evt) -> ksnp_server_event {
+            return ksnp_server_event{
+                .type           = ksnp_server_event_type::KSNP_SERVER_EVENT_SUSPEND_STREAM,
+                .suspend_stream = evt,
+            };
+        },
+        [](ksnp_server_event_keep_alive evt) -> ksnp_server_event {
+            return ksnp_server_event{
+                .type       = ksnp_server_event_type::KSNP_SERVER_EVENT_KEEP_ALIVE,
+                .keep_alive = evt,
+            };
+        },
+        [](ksnp_server_event_new_capacity evt) -> ksnp_server_event {
+            return ksnp_server_event{
+                .type         = ksnp_server_event_type::KSNP_SERVER_EVENT_NEW_CAPACITY,
+                .new_capacity = evt,
+            };
+        },
+        [](ksnp_server_event_error evt) -> ksnp_server_event {
+            return ksnp_server_event{
+                .type  = ksnp_server_event_type::KSNP_SERVER_EVENT_ERROR,
+                .error = evt,
+            };
+        },
+    };
+    return std::visit(visitor, *this);
+}
+
+auto server_event::from_event(ksnp_server_event event) -> std::optional<server_event>
+{
+    switch (event.type) {
+    case ksnp_server_event_type::KSNP_SERVER_EVENT_NONE:
+        return std::nullopt;
+    case ksnp_server_event_type::KSNP_SERVER_EVENT_HANDSHAKE:
+        return event.handshake;
+    case ksnp_server_event_type::KSNP_SERVER_EVENT_OPEN_STREAM:
+        return event.open_stream;
+    case ksnp_server_event_type::KSNP_SERVER_EVENT_CLOSE_STREAM:
+        return event.close_stream;
+    case ksnp_server_event_type::KSNP_SERVER_EVENT_SUSPEND_STREAM:
+        return event.suspend_stream;
+    case ksnp_server_event_type::KSNP_SERVER_EVENT_NEW_CAPACITY:
+        return event.new_capacity;
+    case ksnp_server_event_type::KSNP_SERVER_EVENT_KEEP_ALIVE:
+        return event.keep_alive;
+    case ksnp_server_event_type::KSNP_SERVER_EVENT_ERROR:
+        return event.error;
+    default:
+        throw exception(ksnp_error::KSNP_E_INVALID_EVENT_TYPE);
+    }
+}
+
+}  // namespace ksnp
+
 ksnp_server::ksnp_server(ksnp_message_context *connection)
     : connection(connection)
     , current_stream(nullptr)
@@ -127,7 +205,7 @@ auto ksnp_server::next_event() -> std::optional<server_event>
         ksnp_message        msg{};
         ksnp_protocol_error protocol_error{};
         auto                res     = ::ksnp_message_context_next_message(this->connection, &msg, &protocol_error);
-        auto                message = into_message(msg);
+        auto                message = ksnp::message::from_message(msg);
         if (res == ksnp_error::KSNP_E_NO_ERROR) {
             if (!message.has_value()) {
                 return std::nullopt;
@@ -431,7 +509,7 @@ void ksnp_server::push_message(message const msg)
     if (this->in_shutdown) {
         return;
     }
-    auto c_msg = into_message(msg);
+    auto c_msg = msg.into_message();
     if (auto res = ::ksnp_message_context_write_message(this->connection, &c_msg); res != ksnp_error::KSNP_E_NO_ERROR) {
         throw ksnp::exception(res);
     }
@@ -512,7 +590,7 @@ CATCH_ALL
 auto ksnp_server_next_event(struct ksnp_server *server, ksnp_server_event *event) noexcept -> ksnp_error
 try {
     if (auto evt = server->next_event()) {
-        *event = into_event(*evt);
+        *event = evt->into_event();
     } else {
         *event = ::ksnp_server_event{.type = ksnp_server_event_type::KSNP_SERVER_EVENT_NONE, .none = {}};
     }

@@ -11,6 +11,7 @@
 
 #include <json-c/json_object.h>
 
+#include "helpers.hpp"
 #include "ksnp/client.h"
 #include "ksnp/messages.h"
 #include "ksnp/server.h"
@@ -587,15 +588,18 @@ inline auto operator<<(std::ostream &os, ksnp_msg_key_data_notify const &msg) ->
     return os << "ksnp_msg_key_data_notify{" << msg.key_data << sep << msg.parameters << "}";
 }
 
-template<ostreamable... Alts>
-auto operator<<(std::ostream &os, std::variant<Alts...> const &value) -> std::ostream &
+namespace ksnp
+{
+
+inline auto operator<<(std::ostream &os, message const &msg) -> std::ostream &
 {
     return std::visit(
         [&](auto &&alt) -> std::ostream & {
             return (os << alt);
         },
-        value);
+        msg);
 }
+}  // namespace ksnp
 
 class const_data : public std::span<uint8_t const>
 {

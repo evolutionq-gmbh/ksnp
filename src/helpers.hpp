@@ -358,317 +358,100 @@ constexpr auto operator""_zsv(char const *str, size_t len) noexcept -> zstring_v
     };
 }
 
-using message = std::variant<ksnp_msg_version,
-                             ksnp_msg_open_stream,
-                             ksnp_msg_open_stream_reply,
-                             ksnp_msg_close_stream,
-                             ksnp_msg_close_stream_notify,
-                             ksnp_msg_close_stream_reply,
-                             ksnp_msg_suspend_stream,
-                             ksnp_msg_suspend_stream_notify,
-                             ksnp_msg_suspend_stream_reply,
-                             ksnp_msg_capacity_notify,
-                             ksnp_msg_key_data_notify,
-                             ksnp_msg_keep_alive_stream,
-                             ksnp_msg_keep_alive_stream_reply,
-                             ksnp_msg_error>;
+class server_event
+    : public std::variant<ksnp_server_event_handshake,
+                          ksnp_server_event_open_stream,
+                          ksnp_server_event_close_stream,
+                          ksnp_server_event_suspend_stream,
+                          ksnp_server_event_keep_alive,
+                          ksnp_server_event_new_capacity,
+                          ksnp_server_event_error>
+{
+public:
+    using base = std::variant<ksnp_server_event_handshake,
+                              ksnp_server_event_open_stream,
+                              ksnp_server_event_close_stream,
+                              ksnp_server_event_suspend_stream,
+                              ksnp_server_event_keep_alive,
+                              ksnp_server_event_new_capacity,
+                              ksnp_server_event_error>;
+    using base::base;
+    using base::operator=;
 
-using client_event = std::variant<ksnp_client_event_handshake,
-                                  ksnp_client_event_stream_open,
-                                  ksnp_client_event_stream_close,
-                                  ksnp_client_event_stream_suspend,
-                                  ksnp_client_event_key_data,
-                                  ksnp_client_event_keep_alive,
-                                  ksnp_client_event_error>;
+    static auto from_event(ksnp_server_event event) -> std::optional<server_event>;
 
-using server_event = std::variant<ksnp_server_event_handshake,
-                                  ksnp_server_event_open_stream,
-                                  ksnp_server_event_close_stream,
-                                  ksnp_server_event_suspend_stream,
-                                  ksnp_server_event_keep_alive,
-                                  ksnp_server_event_new_capacity,
-                                  ksnp_server_event_error>;
+    [[nodiscard]] auto into_event() const noexcept -> ksnp_server_event;
+};
+
+class client_event
+    : public std::variant<ksnp_client_event_handshake,
+                          ksnp_client_event_stream_open,
+                          ksnp_client_event_stream_close,
+                          ksnp_client_event_stream_suspend,
+                          ksnp_client_event_key_data,
+                          ksnp_client_event_keep_alive,
+                          ksnp_client_event_error>
+{
+public:
+    using base = std::variant<ksnp_client_event_handshake,
+                              ksnp_client_event_stream_open,
+                              ksnp_client_event_stream_close,
+                              ksnp_client_event_stream_suspend,
+                              ksnp_client_event_key_data,
+                              ksnp_client_event_keep_alive,
+                              ksnp_client_event_error>;
+    using base::base;
+    using base::operator=;
+
+    static auto from_event(ksnp_client_event event) -> std::optional<client_event>;
+
+    [[nodiscard]] auto into_event() const noexcept -> ksnp_client_event;
+};
+
+class message
+    : public std::variant<ksnp_msg_version,
+                          ksnp_msg_open_stream,
+                          ksnp_msg_open_stream_reply,
+                          ksnp_msg_close_stream,
+                          ksnp_msg_close_stream_notify,
+                          ksnp_msg_close_stream_reply,
+                          ksnp_msg_suspend_stream,
+                          ksnp_msg_suspend_stream_notify,
+                          ksnp_msg_suspend_stream_reply,
+                          ksnp_msg_capacity_notify,
+                          ksnp_msg_key_data_notify,
+                          ksnp_msg_keep_alive_stream,
+                          ksnp_msg_keep_alive_stream_reply,
+                          ksnp_msg_error>
+{
+public:
+    using base = std::variant<ksnp_msg_version,
+                              ksnp_msg_open_stream,
+                              ksnp_msg_open_stream_reply,
+                              ksnp_msg_close_stream,
+                              ksnp_msg_close_stream_notify,
+                              ksnp_msg_close_stream_reply,
+                              ksnp_msg_suspend_stream,
+                              ksnp_msg_suspend_stream_notify,
+                              ksnp_msg_suspend_stream_reply,
+                              ksnp_msg_capacity_notify,
+                              ksnp_msg_key_data_notify,
+                              ksnp_msg_keep_alive_stream,
+                              ksnp_msg_keep_alive_stream_reply,
+                              ksnp_msg_error>;
+    using base::base;
+    using base::operator=;
+
+    static auto from_message(ksnp_message msg) -> std::optional<message>;
+
+    [[nodiscard]] auto into_message() const noexcept -> ksnp_message;
+};
 
 // helper type for the visitor
 template<class... Ts>
 struct overloads : Ts... {
     using Ts::operator()...;
 };
-
-auto inline into_message(message msg) noexcept -> ::ksnp_message
-{
-    auto const visitor = overloads{
-        [](ksnp_msg_version msg) -> ksnp_message {
-            return ksnp_message{
-                .type    = ksnp_message_type::KSNP_MSG_VERSION,
-                .version = msg,
-            };
-        },
-        [](ksnp_msg_open_stream msg) -> ksnp_message {
-            return ksnp_message{
-                .type        = ksnp_message_type::KSNP_MSG_OPEN_STREAM,
-                .open_stream = msg,
-            };
-        },
-        [](ksnp_msg_open_stream_reply msg) -> ksnp_message {
-            return ksnp_message{
-                .type              = ksnp_message_type::KSNP_MSG_OPEN_STREAM_REPLY,
-                .open_stream_reply = msg,
-            };
-        },
-        [](ksnp_msg_close_stream msg) -> ksnp_message {
-            return ksnp_message{
-                .type         = ksnp_message_type::KSNP_MSG_CLOSE_STREAM,
-                .close_stream = msg,
-            };
-        },
-        [](ksnp_msg_close_stream_notify msg) -> ksnp_message {
-            return ksnp_message{
-                .type                = ksnp_message_type::KSNP_MSG_CLOSE_STREAM_NOTIFY,
-                .close_stream_notify = msg,
-            };
-        },
-        [](ksnp_msg_close_stream_reply msg) -> ksnp_message {
-            return ksnp_message{
-                .type               = ksnp_message_type::KSNP_MSG_CLOSE_STREAM_REPLY,
-                .close_stream_reply = msg,
-            };
-        },
-        [](ksnp_msg_suspend_stream msg) -> ksnp_message {
-            return ksnp_message{
-                .type           = ksnp_message_type::KSNP_MSG_SUSPEND_STREAM,
-                .suspend_stream = msg,
-            };
-        },
-        [](ksnp_msg_suspend_stream_notify msg) -> ksnp_message {
-            return ksnp_message{
-                .type                  = ksnp_message_type::KSNP_MSG_SUSPEND_STREAM_NOTIFY,
-                .suspend_stream_notify = msg,
-            };
-        },
-        [](ksnp_msg_suspend_stream_reply msg) -> ksnp_message {
-            return ksnp_message{
-                .type                 = ksnp_message_type::KSNP_MSG_SUSPEND_STREAM_REPLY,
-                .suspend_stream_reply = msg,
-            };
-        },
-        [](ksnp_msg_capacity_notify msg) -> ksnp_message {
-            return ksnp_message{
-                .type            = ksnp_message_type::KSNP_MSG_CAPACITY_NOTIFY,
-                .capacity_notify = msg,
-            };
-        },
-        [](ksnp_msg_key_data_notify msg) -> ksnp_message {
-            return ksnp_message{
-                .type            = ksnp_message_type::KSNP_MSG_KEY_DATA_NOTIFY,
-                .key_data_notify = msg,
-            };
-        },
-        [](ksnp_msg_keep_alive_stream msg) -> ksnp_message {
-            return ksnp_message{
-                .type              = ksnp_message_type::KSNP_MSG_KEEP_ALIVE_STREAM,
-                .keep_alive_stream = msg,
-            };
-        },
-        [](ksnp_msg_keep_alive_stream_reply msg) -> ksnp_message {
-            return ksnp_message{
-                .type                    = ksnp_message_type::KSNP_MSG_KEEP_ALIVE_STREAM_REPLY,
-                .keep_alive_stream_reply = msg,
-            };
-        },
-        [](ksnp_msg_error msg) -> ksnp_message {
-            return ksnp_message{
-                .type  = ksnp_message_type::KSNP_MSG_ERROR,
-                .error = msg,
-            };
-        },
-    };
-    return std::visit(visitor, msg);
-}
-
-auto inline into_event(server_event event) noexcept -> ksnp_server_event
-{
-    auto const visitor = overloads{
-        [](ksnp_server_event_handshake evt) -> ksnp_server_event {
-            return ksnp_server_event{
-                .type      = ksnp_server_event_type::KSNP_SERVER_EVENT_HANDSHAKE,
-                .handshake = evt,
-            };
-        },
-        [](ksnp_server_event_open_stream evt) -> ksnp_server_event {
-            return ksnp_server_event{
-                .type        = ksnp_server_event_type::KSNP_SERVER_EVENT_OPEN_STREAM,
-                .open_stream = evt,
-            };
-        },
-        [](ksnp_server_event_close_stream evt) -> ksnp_server_event {
-            return ksnp_server_event{
-                .type         = ksnp_server_event_type::KSNP_SERVER_EVENT_CLOSE_STREAM,
-                .close_stream = evt,
-            };
-        },
-        [](ksnp_server_event_suspend_stream evt) -> ksnp_server_event {
-            return ksnp_server_event{
-                .type           = ksnp_server_event_type::KSNP_SERVER_EVENT_SUSPEND_STREAM,
-                .suspend_stream = evt,
-            };
-        },
-        [](ksnp_server_event_keep_alive evt) -> ksnp_server_event {
-            return ksnp_server_event{
-                .type       = ksnp_server_event_type::KSNP_SERVER_EVENT_KEEP_ALIVE,
-                .keep_alive = evt,
-            };
-        },
-        [](ksnp_server_event_new_capacity evt) -> ksnp_server_event {
-            return ksnp_server_event{
-                .type         = ksnp_server_event_type::KSNP_SERVER_EVENT_NEW_CAPACITY,
-                .new_capacity = evt,
-            };
-        },
-        [](ksnp_server_event_error evt) -> ksnp_server_event {
-            return ksnp_server_event{
-                .type  = ksnp_server_event_type::KSNP_SERVER_EVENT_ERROR,
-                .error = evt,
-            };
-        },
-    };
-    return std::visit(visitor, event);
-}
-
-auto inline into_event(client_event event) noexcept -> ksnp_client_event
-{
-    auto const visitor = overloads{
-        [](ksnp_client_event_handshake evt) -> ksnp_client_event {
-            return ksnp_client_event{
-                .type      = ksnp_client_event_type::KSNP_CLIENT_EVENT_HANDSHAKE,
-                .handshake = evt,
-            };
-        },
-        [](ksnp_client_event_stream_open evt) -> ksnp_client_event {
-            return ksnp_client_event{
-                .type        = ksnp_client_event_type::KSNP_CLIENT_EVENT_STREAM_OPEN,
-                .stream_open = evt,
-            };
-        },
-        [](ksnp_client_event_stream_close evt) -> ksnp_client_event {
-            return ksnp_client_event{
-                .type         = ksnp_client_event_type::KSNP_CLIENT_EVENT_STREAM_CLOSE,
-                .stream_close = evt,
-            };
-        },
-        [](ksnp_client_event_stream_suspend evt) -> ksnp_client_event {
-            return ksnp_client_event{
-                .type           = ksnp_client_event_type::KSNP_CLIENT_EVENT_STREAM_SUSPEND,
-                .stream_suspend = evt,
-            };
-        },
-        [](ksnp_client_event_key_data evt) -> ksnp_client_event {
-            return ksnp_client_event{
-                .type     = ksnp_client_event_type::KSNP_CLIENT_EVENT_STREAM_KEY_DATA,
-                .key_data = evt,
-            };
-        },
-        [](ksnp_client_event_keep_alive evt) -> ksnp_client_event {
-            return ksnp_client_event{
-                .type       = ksnp_client_event_type::KSNP_CLIENT_EVENT_KEEP_ALIVE,
-                .keep_alive = evt,
-            };
-        },
-        [](ksnp_client_event_error evt) -> ksnp_client_event {
-            return ksnp_client_event{
-                .type  = ksnp_client_event_type::KSNP_CLIENT_EVENT_ERROR,
-                .error = evt,
-            };
-        },
-    };
-    return std::visit(visitor, event);
-}
-
-auto inline into_message(::ksnp_message msg) -> std::optional<message>
-{
-    switch (msg.type) {
-    case ksnp_message_type::KSNP_MSG_ERROR:
-        return msg.error;
-    case ksnp_message_type::KSNP_MSG_VERSION:
-        return msg.version;
-    case ksnp_message_type::KSNP_MSG_OPEN_STREAM:
-        return msg.open_stream;
-    case ksnp_message_type::KSNP_MSG_OPEN_STREAM_REPLY:
-        return msg.open_stream_reply;
-    case ksnp_message_type::KSNP_MSG_CLOSE_STREAM:
-        return msg.close_stream;
-    case ksnp_message_type::KSNP_MSG_CLOSE_STREAM_REPLY:
-        return msg.close_stream_reply;
-    case ksnp_message_type::KSNP_MSG_CLOSE_STREAM_NOTIFY:
-        return msg.close_stream_notify;
-    case ksnp_message_type::KSNP_MSG_SUSPEND_STREAM:
-        return msg.suspend_stream;
-    case ksnp_message_type::KSNP_MSG_SUSPEND_STREAM_REPLY:
-        return msg.suspend_stream_reply;
-    case ksnp_message_type::KSNP_MSG_SUSPEND_STREAM_NOTIFY:
-        return msg.suspend_stream_notify;
-    case ksnp_message_type::KSNP_MSG_KEEP_ALIVE_STREAM:
-        return msg.keep_alive_stream;
-    case ksnp_message_type::KSNP_MSG_KEEP_ALIVE_STREAM_REPLY:
-        return msg.keep_alive_stream_reply;
-    case ksnp_message_type::KSNP_MSG_CAPACITY_NOTIFY:
-        return msg.capacity_notify;
-    case ksnp_message_type::KSNP_MSG_KEY_DATA_NOTIFY:
-        return msg.key_data_notify;
-    case ksnp_message_type::KSNP_MSG_NONE:
-        return std::nullopt;
-    default:
-        throw exception(ksnp_error::KSNP_E_INVALID_MESSAGE_TYPE);
-    }
-}
-
-auto inline into_event(ksnp_client_event event) -> std::optional<client_event>
-{
-    switch (event.type) {
-    case ksnp_client_event_type::KSNP_CLIENT_EVENT_NONE:
-        return std::nullopt;
-    case ksnp_client_event_type::KSNP_CLIENT_EVENT_HANDSHAKE:
-        return event.handshake;
-    case ksnp_client_event_type::KSNP_CLIENT_EVENT_STREAM_OPEN:
-        return event.stream_open;
-    case ksnp_client_event_type::KSNP_CLIENT_EVENT_STREAM_CLOSE:
-        return event.stream_close;
-    case ksnp_client_event_type::KSNP_CLIENT_EVENT_STREAM_SUSPEND:
-        return event.stream_suspend;
-    case ksnp_client_event_type::KSNP_CLIENT_EVENT_STREAM_KEY_DATA:
-        return event.key_data;
-    case ksnp_client_event_type::KSNP_CLIENT_EVENT_KEEP_ALIVE:
-        return event.keep_alive;
-    case ksnp_client_event_type::KSNP_CLIENT_EVENT_ERROR:
-        return event.error;
-    default:
-        throw exception(ksnp_error::KSNP_E_INVALID_EVENT_TYPE);
-    }
-}
-
-auto inline into_event(ksnp_server_event event) -> std::optional<server_event>
-{
-    switch (event.type) {
-    case ksnp_server_event_type::KSNP_SERVER_EVENT_NONE:
-        return std::nullopt;
-    case ksnp_server_event_type::KSNP_SERVER_EVENT_HANDSHAKE:
-        return event.handshake;
-    case ksnp_server_event_type::KSNP_SERVER_EVENT_OPEN_STREAM:
-        return event.open_stream;
-    case ksnp_server_event_type::KSNP_SERVER_EVENT_CLOSE_STREAM:
-        return event.close_stream;
-    case ksnp_server_event_type::KSNP_SERVER_EVENT_SUSPEND_STREAM:
-        return event.suspend_stream;
-    case ksnp_server_event_type::KSNP_SERVER_EVENT_NEW_CAPACITY:
-        return event.new_capacity;
-    case ksnp_server_event_type::KSNP_SERVER_EVENT_KEEP_ALIVE:
-        return event.keep_alive;
-    case ksnp_server_event_type::KSNP_SERVER_EVENT_ERROR:
-        return event.error;
-    default:
-        throw exception(ksnp_error::KSNP_E_INVALID_EVENT_TYPE);
-    }
-}
 
 }  // namespace ksnp
 

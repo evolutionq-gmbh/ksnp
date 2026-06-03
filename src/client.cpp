@@ -14,6 +14,84 @@
 
 using namespace ksnp;
 
+namespace ksnp
+{
+
+auto client_event::into_event() const noexcept -> ksnp_client_event
+{
+    auto const visitor = overloads{
+        [](ksnp_client_event_handshake evt) -> ksnp_client_event {
+            return ksnp_client_event{
+                .type      = ksnp_client_event_type::KSNP_CLIENT_EVENT_HANDSHAKE,
+                .handshake = evt,
+            };
+        },
+        [](ksnp_client_event_stream_open evt) -> ksnp_client_event {
+            return ksnp_client_event{
+                .type        = ksnp_client_event_type::KSNP_CLIENT_EVENT_STREAM_OPEN,
+                .stream_open = evt,
+            };
+        },
+        [](ksnp_client_event_stream_close evt) -> ksnp_client_event {
+            return ksnp_client_event{
+                .type         = ksnp_client_event_type::KSNP_CLIENT_EVENT_STREAM_CLOSE,
+                .stream_close = evt,
+            };
+        },
+        [](ksnp_client_event_stream_suspend evt) -> ksnp_client_event {
+            return ksnp_client_event{
+                .type           = ksnp_client_event_type::KSNP_CLIENT_EVENT_STREAM_SUSPEND,
+                .stream_suspend = evt,
+            };
+        },
+        [](ksnp_client_event_key_data evt) -> ksnp_client_event {
+            return ksnp_client_event{
+                .type     = ksnp_client_event_type::KSNP_CLIENT_EVENT_STREAM_KEY_DATA,
+                .key_data = evt,
+            };
+        },
+        [](ksnp_client_event_keep_alive evt) -> ksnp_client_event {
+            return ksnp_client_event{
+                .type       = ksnp_client_event_type::KSNP_CLIENT_EVENT_KEEP_ALIVE,
+                .keep_alive = evt,
+            };
+        },
+        [](ksnp_client_event_error evt) -> ksnp_client_event {
+            return ksnp_client_event{
+                .type  = ksnp_client_event_type::KSNP_CLIENT_EVENT_ERROR,
+                .error = evt,
+            };
+        },
+    };
+    return std::visit(visitor, *this);
+}
+
+auto client_event::from_event(ksnp_client_event event) -> std::optional<client_event>
+{
+    switch (event.type) {
+    case ksnp_client_event_type::KSNP_CLIENT_EVENT_NONE:
+        return std::nullopt;
+    case ksnp_client_event_type::KSNP_CLIENT_EVENT_HANDSHAKE:
+        return event.handshake;
+    case ksnp_client_event_type::KSNP_CLIENT_EVENT_STREAM_OPEN:
+        return event.stream_open;
+    case ksnp_client_event_type::KSNP_CLIENT_EVENT_STREAM_CLOSE:
+        return event.stream_close;
+    case ksnp_client_event_type::KSNP_CLIENT_EVENT_STREAM_SUSPEND:
+        return event.stream_suspend;
+    case ksnp_client_event_type::KSNP_CLIENT_EVENT_STREAM_KEY_DATA:
+        return event.key_data;
+    case ksnp_client_event_type::KSNP_CLIENT_EVENT_KEEP_ALIVE:
+        return event.keep_alive;
+    case ksnp_client_event_type::KSNP_CLIENT_EVENT_ERROR:
+        return event.error;
+    default:
+        throw exception(ksnp_error::KSNP_E_INVALID_EVENT_TYPE);
+    }
+}
+
+}  // namespace ksnp
+
 ksnp_client::ksnp_client(ksnp_message_context *connection)
     : connection(connection)
     , stream_state(stream_state::closed)
@@ -87,7 +165,7 @@ auto ksnp_client::next_event() -> std::optional<client_event>
         ksnp_message        msg{};
         ksnp_protocol_error protocol_error{};
         auto                res     = ::ksnp_message_context_next_message(this->connection, &msg, &protocol_error);
-        auto                message = into_message(msg);
+        auto                message = ksnp::message::from_message(msg);
         if (res == ksnp_error::KSNP_E_NO_ERROR) {
             if (!message.has_value()) {
                 return std::nullopt;
@@ -280,7 +358,7 @@ void ksnp_client::push_message(message const msg)
     if (this->in_shutdown) {
         return;
     }
-    auto c_msg = into_message(msg);
+    auto c_msg = msg.into_message();
     if (auto res = ::ksnp_message_context_write_message(this->connection, &c_msg); res != ksnp_error::KSNP_E_NO_ERROR) {
         throw ksnp::exception(res);
     }
@@ -404,7 +482,7 @@ auto ksnp_client_next_event(struct ksnp_client *client, ksnp_client_event *event
 try {
     auto event = client->next_event();
     if (event.has_value()) {
-        *event_ptr = into_event(*event);
+        *event_ptr = event->into_event();
     } else {
         *event_ptr = ksnp_client_event{.type = ksnp_client_event_type::KSNP_CLIENT_EVENT_NONE, .none = {}};
     }

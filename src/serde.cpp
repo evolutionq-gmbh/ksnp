@@ -31,6 +31,139 @@
 
 using namespace ksnp;
 
+namespace ksnp
+{
+
+auto message::into_message() const noexcept -> ::ksnp_message
+{
+    auto const visitor = overloads{
+        [](ksnp_msg_version msg) -> ksnp_message {
+            return ksnp_message{
+                .type    = ksnp_message_type::KSNP_MSG_VERSION,
+                .version = msg,
+            };
+        },
+        [](ksnp_msg_open_stream msg) -> ksnp_message {
+            return ksnp_message{
+                .type        = ksnp_message_type::KSNP_MSG_OPEN_STREAM,
+                .open_stream = msg,
+            };
+        },
+        [](ksnp_msg_open_stream_reply msg) -> ksnp_message {
+            return ksnp_message{
+                .type              = ksnp_message_type::KSNP_MSG_OPEN_STREAM_REPLY,
+                .open_stream_reply = msg,
+            };
+        },
+        [](ksnp_msg_close_stream msg) -> ksnp_message {
+            return ksnp_message{
+                .type         = ksnp_message_type::KSNP_MSG_CLOSE_STREAM,
+                .close_stream = msg,
+            };
+        },
+        [](ksnp_msg_close_stream_notify msg) -> ksnp_message {
+            return ksnp_message{
+                .type                = ksnp_message_type::KSNP_MSG_CLOSE_STREAM_NOTIFY,
+                .close_stream_notify = msg,
+            };
+        },
+        [](ksnp_msg_close_stream_reply msg) -> ksnp_message {
+            return ksnp_message{
+                .type               = ksnp_message_type::KSNP_MSG_CLOSE_STREAM_REPLY,
+                .close_stream_reply = msg,
+            };
+        },
+        [](ksnp_msg_suspend_stream msg) -> ksnp_message {
+            return ksnp_message{
+                .type           = ksnp_message_type::KSNP_MSG_SUSPEND_STREAM,
+                .suspend_stream = msg,
+            };
+        },
+        [](ksnp_msg_suspend_stream_notify msg) -> ksnp_message {
+            return ksnp_message{
+                .type                  = ksnp_message_type::KSNP_MSG_SUSPEND_STREAM_NOTIFY,
+                .suspend_stream_notify = msg,
+            };
+        },
+        [](ksnp_msg_suspend_stream_reply msg) -> ksnp_message {
+            return ksnp_message{
+                .type                 = ksnp_message_type::KSNP_MSG_SUSPEND_STREAM_REPLY,
+                .suspend_stream_reply = msg,
+            };
+        },
+        [](ksnp_msg_capacity_notify msg) -> ksnp_message {
+            return ksnp_message{
+                .type            = ksnp_message_type::KSNP_MSG_CAPACITY_NOTIFY,
+                .capacity_notify = msg,
+            };
+        },
+        [](ksnp_msg_key_data_notify msg) -> ksnp_message {
+            return ksnp_message{
+                .type            = ksnp_message_type::KSNP_MSG_KEY_DATA_NOTIFY,
+                .key_data_notify = msg,
+            };
+        },
+        [](ksnp_msg_keep_alive_stream msg) -> ksnp_message {
+            return ksnp_message{
+                .type              = ksnp_message_type::KSNP_MSG_KEEP_ALIVE_STREAM,
+                .keep_alive_stream = msg,
+            };
+        },
+        [](ksnp_msg_keep_alive_stream_reply msg) -> ksnp_message {
+            return ksnp_message{
+                .type                    = ksnp_message_type::KSNP_MSG_KEEP_ALIVE_STREAM_REPLY,
+                .keep_alive_stream_reply = msg,
+            };
+        },
+        [](ksnp_msg_error msg) -> ksnp_message {
+            return ksnp_message{
+                .type  = ksnp_message_type::KSNP_MSG_ERROR,
+                .error = msg,
+            };
+        },
+    };
+    return std::visit(visitor, *this);
+}
+
+auto message::from_message(::ksnp_message msg) -> std::optional<message>
+{
+    switch (msg.type) {
+    case ksnp_message_type::KSNP_MSG_ERROR:
+        return msg.error;
+    case ksnp_message_type::KSNP_MSG_VERSION:
+        return msg.version;
+    case ksnp_message_type::KSNP_MSG_OPEN_STREAM:
+        return msg.open_stream;
+    case ksnp_message_type::KSNP_MSG_OPEN_STREAM_REPLY:
+        return msg.open_stream_reply;
+    case ksnp_message_type::KSNP_MSG_CLOSE_STREAM:
+        return msg.close_stream;
+    case ksnp_message_type::KSNP_MSG_CLOSE_STREAM_REPLY:
+        return msg.close_stream_reply;
+    case ksnp_message_type::KSNP_MSG_CLOSE_STREAM_NOTIFY:
+        return msg.close_stream_notify;
+    case ksnp_message_type::KSNP_MSG_SUSPEND_STREAM:
+        return msg.suspend_stream;
+    case ksnp_message_type::KSNP_MSG_SUSPEND_STREAM_REPLY:
+        return msg.suspend_stream_reply;
+    case ksnp_message_type::KSNP_MSG_SUSPEND_STREAM_NOTIFY:
+        return msg.suspend_stream_notify;
+    case ksnp_message_type::KSNP_MSG_KEEP_ALIVE_STREAM:
+        return msg.keep_alive_stream;
+    case ksnp_message_type::KSNP_MSG_KEEP_ALIVE_STREAM_REPLY:
+        return msg.keep_alive_stream_reply;
+    case ksnp_message_type::KSNP_MSG_CAPACITY_NOTIFY:
+        return msg.capacity_notify;
+    case ksnp_message_type::KSNP_MSG_KEY_DATA_NOTIFY:
+        return msg.key_data_notify;
+    case ksnp_message_type::KSNP_MSG_NONE:
+        return std::nullopt;
+    default:
+        throw exception(ksnp_error::KSNP_E_INVALID_MESSAGE_TYPE);
+    }
+}
+}  // namespace ksnp
+
 namespace
 {
 
@@ -230,20 +363,20 @@ template<std::unsigned_integral SourceUint, typename U8 = unsigned char>
     return result;
 }
 
-using json_obj_deleter = unique_obj<json_object *, json_object_put>;
+using json_ptr = unique_obj<json_object *, json_object_put>;
 
-class json_obj : json_obj_deleter
+class json_obj : json_ptr
 {
 
 public:
     json_obj() = default;
 
-    explicit json_obj(json_object *obj) : json_obj_deleter(json_object_get(ensure_object(obj)))
+    explicit json_obj(json_object *obj) : json_ptr(json_object_get(ensure_object(obj)))
     {}
 
-    using json_obj_deleter::operator*;
-    using json_obj_deleter::operator->;
-    using json_obj_deleter::operator bool;
+    using json_ptr::operator*;
+    using json_ptr::operator->;
+    using json_ptr::operator bool;
 
 private:
     static auto ensure_object(json_object *obj) -> json_object *
@@ -325,7 +458,7 @@ void check_subobject_allowed_keys(json_object const *obj, string_views... allowe
     }
 }
 
-[[nodiscard]] auto get_subobject_string(json_object const *obj, zstring_view key) -> json_obj_deleter
+[[nodiscard]] auto get_subobject_string(json_object const *obj, zstring_view key) -> json_ptr
 {
     json_object *subobj = nullptr;
     if (json_object_object_get_ex(obj, key.c_str(), &subobj) == 1 && json_object_get_type(subobj) != json_type_string) {
@@ -333,21 +466,21 @@ void check_subobject_allowed_keys(json_object const *obj, string_views... allowe
     }
     // If obj has no entry for the given key, subobj will still be nullptr
     // here.
-    return json_obj_deleter(subobj != nullptr ? json_object_get(subobj) : nullptr);
+    return json_ptr(subobj != nullptr ? json_object_get(subobj) : nullptr);
 }
 
 class stream_address
 {
 private:
-    json_obj_deleter sae;
-    json_obj_deleter network;
-    ksnp_address     address;
+    json_ptr     sae;
+    json_ptr     network;
+    ksnp_address address;
 
 public:
     stream_address() : address{.sae = nullptr, .network = nullptr}
     {}
 
-    stream_address(json_obj_deleter sae, json_obj_deleter network)
+    stream_address(json_ptr sae, json_ptr network)
         : sae(std::move(sae))
         , network(std::move(network))
         , address{.sae = json_object_get_string(*this->sae), .network = json_object_get_string(*this->network)}
@@ -421,7 +554,7 @@ void add_address_to_json(json_object *obj, zstring_view key, struct ksnp_address
         return;
     }
 
-    auto address_obj = json_obj_deleter(check_alloc(json_object_new_object()));
+    auto address_obj = json_ptr(check_alloc(json_object_new_object()));
     if (address.sae != nullptr) {
         add_string_to_json(address_obj.get(), json_key_address_sae, address.sae);
     }
@@ -452,7 +585,7 @@ void add_uint_to_json(json_object *obj, zstring_view key, SourceUint val)
         return nullptr;
     }
 
-    auto rate_obj = json_obj_deleter(check_alloc(json_object_new_object()));
+    auto rate_obj = json_ptr(check_alloc(json_object_new_object()));
     add_uint_to_json(rate_obj.get(), json_key_rate_bits, rate.bits);
     if (rate.seconds != 0) {
         add_uint_to_json(rate_obj.get(), json_key_rate_seconds, rate.seconds);
@@ -495,7 +628,7 @@ requires std::convertible_to<decltype(std::declval<QosExpectedValue>().range.min
             obj, key.c_str(), json_object_new_null(), JSON_C_OBJECT_ADD_CONSTANT_KEY | JSON_C_OBJECT_ADD_KEY_IS_NEW);
         break;
     case ksnp_qos_type::KSNP_QOS_RANGE: {
-        auto range_obj = json_obj_deleter(check_alloc(json_object_new_object()));
+        auto range_obj = json_ptr(check_alloc(json_object_new_object()));
         json_object_object_add_ex(range_obj.get(),
                                   json_key_qos_range_min.c_str(),
                                   check_alloc(ToJson(qos.range.min)),
@@ -519,7 +652,7 @@ requires std::convertible_to<decltype(std::declval<QosExpectedValue>().range.min
         if (!std::in_range<int>(list.size())) {
             throw exception(ksnp_error::KSNP_E_INVALID_ARGUMENT);
         }
-        auto array_obj = json_obj_deleter(check_alloc(json_object_new_array_ext(static_cast<int>(list.size()))));
+        auto array_obj = json_ptr(check_alloc(json_object_new_array_ext(static_cast<int>(list.size()))));
         for (auto item: list) {
             if (json_object_array_add(array_obj.get(), check_alloc(ToJson(item))) != 0) {
                 throw ksnp::exception(ksnp_error::KSNP_E_NO_MEM);
@@ -1075,8 +1208,8 @@ private:
             throw ksnp::exception(ksnp_error::KSNP_E_INVALID_ARGUMENT);
         }
 
-        json_obj_deleter main_obj(json_object_new_object());
-        auto            *obj = main_obj.get();
+        json_ptr main_obj(json_object_new_object());
+        auto    *obj = main_obj.get();
 
         add_stream_id_to_json(obj, json_key_ksid, {params->stream_id});
         add_address_to_json(obj, json_key_source, params->source);
@@ -1100,8 +1233,8 @@ private:
             throw ksnp::exception(ksnp_error::KSNP_E_INVALID_ARGUMENT);
         }
 
-        json_obj_deleter main_obj(json_object_new_object());
-        auto            *obj = main_obj.get();
+        json_ptr main_obj(json_object_new_object());
+        auto    *obj = main_obj.get();
 
         add_stream_id_to_json(obj, json_key_ksid, {params->stream_id});
         add_uint_to_json(obj, json_key_chunk_size, params->chunk_size);
@@ -1157,8 +1290,8 @@ private:
             }
         }
 
-        json_obj_deleter main_obj(json_object_new_object());
-        auto            *obj = main_obj.get();
+        json_ptr main_obj(json_object_new_object());
+        auto    *obj = main_obj.get();
 
         add_qos_u16_to_json(obj, json_key_chunk_size, params->chunk_size);
         add_qos_rate_to_json(obj, json_key_min_bps, params->min_bps);
@@ -1403,7 +1536,7 @@ public:
             }
             struct ksnp_data key_data = {.data = data.data(), .len = data_len};
             data                      = data.subspan(data_len);
-            auto payload              = load_next_json(data, data.size());
+            json_obj payload          = load_next_json(data, data.size());
             if (payload && json_object_get_type(*payload) != json_type_object) {
                 throw ksnp::protocol_exception(ksnp_error_code::KSNP_PROT_E_BAD_JSON_TYPE);
             }
@@ -1424,7 +1557,7 @@ public:
         }
 
         // KSNP_MSG_NONE raises an error, so a value exists.
-        return *into_message(msg);
+        return *ksnp::message::from_message(msg);
     }
 
     void write_message(struct ksnp_message const *msg)  // NOLINT: readability-function-cognitive-complexity
@@ -1605,7 +1738,7 @@ try {
 
     try {
         if (auto next_message = ctx->next_message()) {
-            *message = into_message(*next_message);
+            *message = next_message->into_message();
         } else {
             *message = ksnp_message{.type = ksnp_message_type::KSNP_MSG_NONE, .none = 0};
         }

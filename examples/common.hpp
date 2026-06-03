@@ -263,12 +263,13 @@ public:
             }
             throw ksnp_exception(err);
         }
-        return ksnp::into_message(msg);
+        return ksnp::message::from_message(msg);
     }
 
-    void write_message(ksnp_message const *msg)
+    void write_message(ksnp::message const &msg)
     {
-        check_error(::ksnp_message_context_write_message(**this, msg));
+        auto raw_message = msg.into_message();
+        check_error(::ksnp_message_context_write_message(**this, &raw_message));
     }
 };
 
@@ -315,7 +316,7 @@ public:
     {
         ksnp_client_event evt{};
         check_error(::ksnp_client_next_event(**this, &evt));
-        return ksnp::into_event(evt);
+        return ksnp::client_event::from_event(evt);
     }
 
     void open_stream(struct ksnp_stream_open_params const &params)
@@ -387,7 +388,7 @@ public:
     {
         ksnp_server_event evt{};
         check_error(::ksnp_server_next_event(**this, &evt));
-        return ksnp::into_event(evt);
+        return ksnp::server_event::from_event(evt);
     }
 
     auto get_stream() -> ksnp_stream *
