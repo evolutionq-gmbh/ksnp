@@ -96,8 +96,8 @@ auto server_event::from_event(ksnp_server_event event) -> std::optional<server_e
 
 }  // namespace ksnp
 
-ksnp_server::ksnp_server(ksnp_message_context *connection)
-    : connection(connection)
+ksnp_server::ksnp_server(ksnp::message_context &connection)
+    : connection(&connection)
     , current_stream(nullptr)
     , client_capacity(0)
     , stream_state(stream_state::closed)
@@ -113,27 +113,22 @@ auto ksnp_server::want_read() const noexcept -> bool
     if (this->stream_state == stream_state::error) {
         return false;
     }
-    return ::ksnp_message_context_want_read(this->connection);
+    return this->connection->want_read();
 }
 
 auto ksnp_server::read_data(std::span<uint8_t const> data) -> size_t
 {
-    size_t len = data.size();
-    if (len == 0) {
+    if (data.empty()) {
         this->close_connection(ksnp_close_direction::KSNP_CLOSE_READ);
         return 0;
     }
 
-    if (auto res = ::ksnp_message_context_read_data(this->connection, data.data(), &len);
-        res != ksnp_error::KSNP_E_NO_ERROR) {
-        throw ksnp::exception(res);
-    }
-    return len;
+    return this->connection->read_data(data);
 }
 
 auto ksnp_server::want_write() const noexcept -> bool
 {
-    return (::ksnp_message_context_want_write(this->connection)
+    return (this->connection->want_write()
             || (this->current_stream && this->client_capacity >= this->current_stream->chunk_size
                 && this->current_stream->has_chunk_available(*this->current_stream)))
         || this->give_eof;
@@ -141,7 +136,7 @@ auto ksnp_server::want_write() const noexcept -> bool
 
 void ksnp_server::flush_data()
 {
-    if (!::ksnp_message_context_want_write(this->connection) && this->current_stream
+    if (!this->connection->want_write() && this->current_stream
         && this->client_capacity >= this->current_stream->chunk_size
         && this->current_stream->has_chunk_available(*this->current_stream)) {
         auto constexpr max_key_data = static_cast<uint16_t>(KSNP_MAX_MSG_LEN - KSNP_MSG_HEADER_SIZE);
@@ -166,7 +161,7 @@ void ksnp_server::flush_data()
         }
     }
 
-    if (!::ksnp_message_context_want_write(this->connection) && this->give_eof) {
+    if (!this->connection->want_write() && this->give_eof) {
         // If no data needs to be written by the context and give_eof is true,
         // want_write returned true. A "flush" will clear the EOF flag so it
         // does not get indicated twice.
@@ -178,12 +173,7 @@ auto ksnp_server::write_data(std::span<uint8_t> data) -> size_t
 {
     this->flush_data();
 
-    auto len = data.size();
-    if (auto res = ::ksnp_message_context_write_data(this->connection, data.data(), &len);
-        res != ksnp_error::KSNP_E_NO_ERROR) {
-        throw ksnp::exception(res);
-    }
-    return len;
+    return this->connection->write_data(data);
 }
 
 auto ksnp_server::next_event() -> std::optional<server_event>
@@ -202,26 +192,22 @@ auto ksnp_server::next_event() -> std::optional<server_event>
     }
 
     while (true) {
-        ksnp_message        msg{};
-        ksnp_protocol_error protocol_error{};
-        auto                res     = ::ksnp_message_context_next_message(this->connection, &msg, &protocol_error);
-        auto                message = ksnp::message::from_message(msg);
-        if (res == ksnp_error::KSNP_E_NO_ERROR) {
-            if (!message.has_value()) {
-                return std::nullopt;
-            }
-            if (auto event = this->process_message(*message); event.has_value()) {
-                return event;
-            }
-        } else if (res == ksnp_error::KSNP_E_PROTOCOL_ERROR) {
-            this->stream_state = stream_state::error;
+        std::optional<message> message;
+        try {
+            message = this->connection->next_message();
+        } catch (protocol_exception &e) {
             return ksnp_server_event_error{
-                .code        = protocol_error.code,
-                .description = protocol_error.description,
+                .code        = e.code(),
+                .description = e.description(),
                 .stream      = this->current_stream.release(),
             };
-        } else {
-            throw ksnp::exception(res);
+        }
+
+        if (!message.has_value()) {
+            return std::nullopt;
+        }
+        if (auto event = this->process_message(*message); event.has_value()) {
+            return event;
         }
     }
 }
@@ -483,11 +469,7 @@ void ksnp_server::close_connection(ksnp_close_direction dir)
     }
 
     if (close_read) {
-        size_t len = 0;
-        if (auto res = ::ksnp_message_context_read_data(this->connection, nullptr, &len);
-            res != ksnp_error::KSNP_E_NO_ERROR) {
-            throw ksnp::exception(res);
-        }
+        this->connection->read_data({});
     }
 
     if (close_write) {
@@ -509,10 +491,7 @@ void ksnp_server::push_message(message const msg)
     if (this->in_shutdown) {
         return;
     }
-    auto c_msg = msg.into_message();
-    if (auto res = ::ksnp_message_context_write_message(this->connection, &c_msg); res != ksnp_error::KSNP_E_NO_ERROR) {
-        throw ksnp::exception(res);
-    }
+    this->connection->write_message(msg);
 }
 
 auto ksnp_server::on_error(ksnp_error_code err) -> server_event
@@ -558,7 +537,7 @@ CATCH_ALL
 auto ksnp_server_create(struct ksnp_server **server, ksnp_message_context *ctx) noexcept -> ksnp_error
 try {
     *server = nullptr;
-    *server = new ksnp_server(ctx);
+    *server = new ksnp_server(*reinterpret_cast<message_context *>(ctx));
     return ksnp_error::KSNP_E_NO_ERROR;
 }
 CATCH_ALL

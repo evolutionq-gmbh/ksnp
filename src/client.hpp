@@ -4,6 +4,7 @@
 
 #include "helpers.hpp"
 #include "ksnp/client.h"
+#include "serde.hpp"
 
 struct ksnp_client {
 private:
@@ -16,7 +17,7 @@ private:
         error,
     };
 
-    ksnp_message_context                *connection;
+    ksnp::message_context               *connection;
     std::optional<ksnp_protocol_version> version;
     stream_state                         stream_state;
     bool                                 in_shutdown;
@@ -25,7 +26,7 @@ private:
     uint16_t                             chunk_size;
 
 public:
-    explicit ksnp_client(ksnp_message_context *connection);
+    explicit ksnp_client(ksnp::message_context &connection);
 
     ~ksnp_client() = default;
 

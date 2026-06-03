@@ -6,6 +6,7 @@
 #include "helpers.hpp"
 #include "ksnp/server.h"
 #include "ksnp/types.h"
+#include "serde.hpp"
 
 struct simple_stream : protected ksnp_stream {
 private:
@@ -122,7 +123,7 @@ private:
         (void)stream;
     }
 
-    ksnp_message_context                          *connection;
+    ksnp::message_context                         *connection;
     ksnp::unique_obj<ksnp_stream *, ignore_stream> current_stream;
     std::optional<ksnp_protocol_version>           version;
 
@@ -142,7 +143,7 @@ public:
      *
      * @param connection Client connection.
      */
-    explicit ksnp_server(ksnp_message_context *connection);
+    explicit ksnp_server(ksnp::message_context &connection);
     ~ksnp_server() = default;
 
     ksnp_server(ksnp_server const &) = delete;
