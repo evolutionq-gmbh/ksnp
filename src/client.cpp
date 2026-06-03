@@ -84,14 +84,15 @@ auto ksnp_client::next_event() -> std::optional<client_event>
     }
 
     while (true) {
-        ksnp_message const *msg{};
+        ksnp_message        msg{};
         ksnp_protocol_error protocol_error{};
-        auto                res = ::ksnp_message_context_next_message(this->connection, &msg, &protocol_error);
+        auto                res     = ::ksnp_message_context_next_message(this->connection, &msg, &protocol_error);
+        auto                message = into_message(msg);
         if (res == ksnp_error::KSNP_E_NO_ERROR) {
-            if (msg == nullptr) {
+            if (!message.has_value()) {
                 return std::nullopt;
             }
-            if (auto event = this->process_message(*msg); event.has_value()) {
+            if (auto event = this->process_message(*message); event.has_value()) {
                 return event;
             }
         } else if (res == ksnp_error::KSNP_E_PROTOCOL_ERROR) {
@@ -106,7 +107,7 @@ auto ksnp_client::next_event() -> std::optional<client_event>
     }
 }
 
-auto ksnp_client::process_message(ksnp_message const &msg)  // NOLINT(readability-function-cognitive-complexity)
+auto ksnp_client::process_message(message const &msg)  // NOLINT(readability-function-cognitive-complexity)
     -> std::optional<client_event>
 {
     if (this->stream_state == stream_state::error) {
@@ -134,7 +135,7 @@ auto ksnp_client::process_message(ksnp_message const &msg)  // NOLINT(readabilit
                                       [this](auto) -> std::optional<client_event> {
                                           return on_error(ksnp_error_code::KSNP_PROT_E_UNEXPECTED_MESSAGE);
                                       }};
-        return std::visit(version_msg_visitor, into_message(msg));
+        return std::visit(version_msg_visitor, msg);
     }
 
     overloads msg_visitor{[this](::ksnp_msg_error msg) -> std::optional<client_event> {
@@ -271,10 +272,10 @@ auto ksnp_client::process_message(ksnp_message const &msg)  // NOLINT(readabilit
                               return on_error(ksnp_error_code::KSNP_PROT_E_UNEXPECTED_MESSAGE);
                           }};
 
-    return std::visit(msg_visitor, into_message(msg));
+    return std::visit(msg_visitor, msg);
 }
 
-void ksnp_client::push_message(message_t const msg)
+void ksnp_client::push_message(message const msg)
 {
     if (this->in_shutdown) {
         return;

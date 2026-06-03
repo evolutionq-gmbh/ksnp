@@ -124,14 +124,15 @@ auto ksnp_server::next_event() -> std::optional<server_event>
     }
 
     while (true) {
-        ksnp_message const *msg{};
+        ksnp_message        msg{};
         ksnp_protocol_error protocol_error{};
-        auto                res = ::ksnp_message_context_next_message(this->connection, &msg, &protocol_error);
+        auto                res     = ::ksnp_message_context_next_message(this->connection, &msg, &protocol_error);
+        auto                message = into_message(msg);
         if (res == ksnp_error::KSNP_E_NO_ERROR) {
-            if (msg == nullptr) {
+            if (!message.has_value()) {
                 return std::nullopt;
             }
-            if (auto event = this->process_message(*msg); event.has_value()) {
+            if (auto event = this->process_message(*message); event.has_value()) {
                 return event;
             }
         } else if (res == ksnp_error::KSNP_E_PROTOCOL_ERROR) {
@@ -147,7 +148,7 @@ auto ksnp_server::next_event() -> std::optional<server_event>
     }
 }
 
-auto ksnp_server::process_message(ksnp_message const &msg) -> std::optional<server_event>
+auto ksnp_server::process_message(message const &msg) -> std::optional<server_event>
 {
     if (this->stream_state == stream_state::error) {
         return std::nullopt;
@@ -173,7 +174,7 @@ auto ksnp_server::process_message(ksnp_message const &msg) -> std::optional<serv
                                       [this](auto) -> std::optional<server_event> {
                                           return this->on_error(ksnp_error_code::KSNP_PROT_E_UNEXPECTED_MESSAGE);
                                       }};
-        return std::visit(version_msg_visitor, into_message(msg));
+        return std::visit(version_msg_visitor, msg);
     }
 
     overloads msg_visitor{[this](::ksnp_msg_error msg) -> std::optional<server_event> {
@@ -267,7 +268,7 @@ auto ksnp_server::process_message(ksnp_message const &msg) -> std::optional<serv
                               return this->on_error(ksnp_error_code::KSNP_PROT_E_UNEXPECTED_MESSAGE);
                           }};
 
-    return std::visit(msg_visitor, into_message(msg));
+    return std::visit(msg_visitor, msg);
 }
 
 void ksnp_server::open_stream_ok(ksnp_stream *stream, struct ksnp_stream_accepted_params const *params)
@@ -425,7 +426,7 @@ void ksnp_server::close_connection(ksnp_close_direction dir)
     }
 }
 
-void ksnp_server::push_message(message_t const msg)
+void ksnp_server::push_message(message const msg)
 {
     if (this->in_shutdown) {
         return;
@@ -558,7 +559,7 @@ CATCH_ALL
 
 auto ksnp_server_next_event(struct ksnp_server *server, ksnp_server_event *event) noexcept -> ksnp_error
 try {
-    if (auto evt = server->next_event(); evt.has_value()) {
+    if (auto evt = server->next_event()) {
         *event = into_event(*evt);
     } else {
         *event = ::ksnp_server_event{.type = ksnp_server_event_type::KSNP_SERVER_EVENT_NONE, .none = {}};

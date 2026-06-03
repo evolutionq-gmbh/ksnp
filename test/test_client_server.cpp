@@ -289,7 +289,7 @@ BOOST_AUTO_TEST_CASE(test_connection_client_over_capacity)
     BOOST_CHECK_EXCEPTION(conn.client().add_capacity(1), ksnp_exception, [](auto const &exc) -> bool {
         return exc.error() == ksnp_error::KSNP_E_INVALID_ARGUMENT;
     });
-    auto raw_message = ksnp::into_message(ksnp::message_t{::ksnp_msg_capacity_notify{.additional_capacity = 1}});
+    auto raw_message = ksnp::into_message(ksnp::message{::ksnp_msg_capacity_notify{.additional_capacity = 1}});
     conn.client_message_context().write_message(&raw_message);
     conn.complete_io();
     auto server_event = ksnp::server_event{

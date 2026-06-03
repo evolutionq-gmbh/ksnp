@@ -393,7 +393,7 @@ impl MessageContext {
 
     /// Returns the next message event, if any.
     pub fn next_event(&mut self) -> Result<MessageResult<'_>, Error> {
-        let mut value = null();
+        let mut message = MaybeUninit::uninit();
         let mut protocol_error = sys::ksnp_protocol_error {
             code: sys::ksnp_error_code::KSNP_PROT_E_UNKNOWN_ERROR,
             description: null(),
@@ -403,14 +403,17 @@ impl MessageContext {
         match unsafe {
             sys::ksnp_message_context_next_message(
                 self.ctx,
-                &raw mut value,
+                message.as_mut_ptr(),
                 &raw mut protocol_error,
             )
         } {
             ksnp_error::KSNP_E_NO_ERROR => {
-                // SAFETY: The pointer is valid until the underlying context is
-                // modified. The exclusive borrow on self ensures this.
-                let msg = MessageResult::from(unsafe { value.as_ref() }.map(Message::from));
+                // SAFETY: On success the message is valid and assume_init can
+                // be called. The message data is valid for the current
+                // exclusive borrow of self, as it prevents any other context
+                // methods from being called.
+                let msg =
+                    MessageResult::from(unsafe { Message::from_message(message.assume_init()) });
                 Ok(msg)
             }
             ksnp_error::KSNP_E_PROTOCOL_ERROR => {
@@ -738,16 +741,16 @@ impl Message<'_> {
     }
 }
 
-impl From<&sys::ksnp_msg_error> for Message<'_> {
-    fn from(value: &sys::ksnp_msg_error) -> Self {
+impl From<sys::ksnp_msg_error> for Message<'_> {
+    fn from(value: sys::ksnp_msg_error) -> Self {
         Self::Error {
             code: value.code.into(),
         }
     }
 }
 
-impl From<&sys::ksnp_msg_version> for Message<'_> {
-    fn from(value: &sys::ksnp_msg_version) -> Self {
+impl From<sys::ksnp_msg_version> for Message<'_> {
+    fn from(value: sys::ksnp_msg_version) -> Self {
         Self::Version {
             minimum_version: value.minimum_version.0,
             maximum_version: value.maximum_version.0,
@@ -755,8 +758,59 @@ impl From<&sys::ksnp_msg_version> for Message<'_> {
     }
 }
 
-impl From<&sys::ksnp_msg_open_stream> for Message<'_> {
-    fn from(value: &sys::ksnp_msg_open_stream) -> Self {
+impl From<sys::ksnp_msg_close_stream> for Message<'_> {
+    fn from(_value: sys::ksnp_msg_close_stream) -> Self {
+        Self::CloseStream
+    }
+}
+
+impl From<sys::ksnp_msg_close_stream_reply> for Message<'_> {
+    fn from(_value: sys::ksnp_msg_close_stream_reply) -> Self {
+        Self::CloseStreamReply
+    }
+}
+
+impl From<sys::ksnp_msg_suspend_stream> for Message<'_> {
+    fn from(value: sys::ksnp_msg_suspend_stream) -> Self {
+        Self::SuspendStream {
+            timeout: Duration::from_secs(value.timeout.into()),
+        }
+    }
+}
+
+impl From<sys::ksnp_msg_suspend_stream_notify> for Message<'_> {
+    fn from(value: sys::ksnp_msg_suspend_stream_notify) -> Self {
+        Self::SuspendStreamNotify {
+            code: value.code.into(),
+            timeout: Duration::from_secs(value.timeout.into()),
+        }
+    }
+}
+
+impl From<sys::ksnp_msg_keep_alive_stream> for Message<'_> {
+    fn from(value: sys::ksnp_msg_keep_alive_stream) -> Self {
+        Self::KeepAlive {
+            stream_id: Uuid::from_bytes(value.key_stream_id),
+        }
+    }
+}
+
+impl From<sys::ksnp_msg_capacity_notify> for Message<'_> {
+    fn from(value: sys::ksnp_msg_capacity_notify) -> Self {
+        Self::CapacityNotify {
+            additional_capacity: value.additional_capacity,
+        }
+    }
+}
+
+impl Message<'_> {
+    /// Converts a message from a raw open stream message.
+    ///
+    /// # Safety
+    ///
+    /// The raw message must point to data that is valid for the lifetime of
+    /// this message.
+    unsafe fn from_open_stream(value: sys::ksnp_msg_open_stream) -> Self {
         Self::OpenStream {
             // SAFETY: The input message must point to a valid parameters
             // object.
@@ -765,10 +819,14 @@ impl From<&sys::ksnp_msg_open_stream> for Message<'_> {
             }),
         }
     }
-}
 
-impl From<&sys::ksnp_msg_open_stream_reply> for Message<'_> {
-    fn from(value: &sys::ksnp_msg_open_stream_reply) -> Self {
+    /// Converts a message from a open stream reply message.
+    ///
+    /// # Safety
+    ///
+    /// The raw message must point to data that is valid for the lifetime of
+    /// this message.
+    unsafe fn from_open_stream_reply(value: sys::ksnp_msg_open_stream_reply) -> Self {
         match NonZero::new(value.code.0) {
             None => Self::OpenStreamReply {
                 // SAFETY: A message with status 0 has a valid reply object
@@ -788,22 +846,14 @@ impl From<&sys::ksnp_msg_open_stream_reply> for Message<'_> {
             },
         }
     }
-}
 
-impl From<&sys::ksnp_msg_close_stream> for Message<'_> {
-    fn from(_value: &sys::ksnp_msg_close_stream) -> Self {
-        Self::CloseStream
-    }
-}
-
-impl From<&sys::ksnp_msg_close_stream_reply> for Message<'_> {
-    fn from(_value: &sys::ksnp_msg_close_stream_reply) -> Self {
-        Self::CloseStreamReply
-    }
-}
-
-impl From<&sys::ksnp_msg_close_stream_notify> for Message<'_> {
-    fn from(value: &sys::ksnp_msg_close_stream_notify) -> Self {
+    /// Converts a message from a raw close stream notify message.
+    ///
+    /// # Safety
+    ///
+    /// The raw message must point to data that is valid for the lifetime of
+    /// this message.
+    unsafe fn from_close_stream_notify(value: sys::ksnp_msg_close_stream_notify) -> Self {
         Self::CloseStreamNotify {
             code: value.code,
             // SAFETY: The message pointer is valid for the lifetime of the
@@ -811,18 +861,14 @@ impl From<&sys::ksnp_msg_close_stream_notify> for Message<'_> {
             message: unsafe { string_ref(value.message) },
         }
     }
-}
 
-impl From<&sys::ksnp_msg_suspend_stream> for Message<'_> {
-    fn from(value: &sys::ksnp_msg_suspend_stream) -> Self {
-        Self::SuspendStream {
-            timeout: Duration::from_secs(value.timeout.into()),
-        }
-    }
-}
-
-impl From<&sys::ksnp_msg_suspend_stream_reply> for Message<'_> {
-    fn from(value: &sys::ksnp_msg_suspend_stream_reply) -> Self {
+    /// Converts a message from a raw suspend stream reply message.
+    ///
+    /// # Safety
+    ///
+    /// The raw message must point to data that is valid for the lifetime of
+    /// this message.
+    unsafe fn from_suspend_stream_reply(value: sys::ksnp_msg_suspend_stream_reply) -> Self {
         match NonZero::new(value.code.0) {
             None => Self::SuspendStreamReply {
                 timeout: Duration::from_secs(value.timeout.into()),
@@ -835,27 +881,14 @@ impl From<&sys::ksnp_msg_suspend_stream_reply> for Message<'_> {
             },
         }
     }
-}
 
-impl From<&sys::ksnp_msg_suspend_stream_notify> for Message<'_> {
-    fn from(value: &sys::ksnp_msg_suspend_stream_notify) -> Self {
-        Self::SuspendStreamNotify {
-            code: value.code.into(),
-            timeout: Duration::from_secs(value.timeout.into()),
-        }
-    }
-}
-
-impl From<&sys::ksnp_msg_keep_alive_stream> for Message<'_> {
-    fn from(value: &sys::ksnp_msg_keep_alive_stream) -> Self {
-        Self::KeepAlive {
-            stream_id: Uuid::from_bytes(value.key_stream_id),
-        }
-    }
-}
-
-impl From<&sys::ksnp_msg_keep_alive_stream_reply> for Message<'_> {
-    fn from(value: &sys::ksnp_msg_keep_alive_stream_reply) -> Self {
+    /// Converts a message from a raw keep alive reply message.
+    ///
+    /// # Safety
+    ///
+    /// The raw message must point to data that is valid for the lifetime of
+    /// this message.
+    unsafe fn from_keep_alive_stream_reply(value: sys::ksnp_msg_keep_alive_stream_reply) -> Self {
         match NonZero::new(value.code.0) {
             None => Self::KeepAliveReply,
             Some(code) => Self::KeepAliveFailed {
@@ -866,75 +899,77 @@ impl From<&sys::ksnp_msg_keep_alive_stream_reply> for Message<'_> {
             },
         }
     }
-}
 
-impl From<&sys::ksnp_msg_capacity_notify> for Message<'_> {
-    fn from(value: &sys::ksnp_msg_capacity_notify) -> Self {
-        Self::CapacityNotify {
-            additional_capacity: value.additional_capacity,
-        }
-    }
-}
-
-impl From<&sys::ksnp_msg_key_data_notify> for Message<'_> {
-    fn from(value: &sys::ksnp_msg_key_data_notify) -> Self {
+    /// Converts a message from a raw key data message.
+    ///
+    /// # Safety
+    ///
+    /// The raw message must point to data that is valid for the lifetime of
+    /// this message.
+    unsafe fn from_key_data_notify(value: sys::ksnp_msg_key_data_notify) -> Self {
         // The JSON parameters are ignored for now
         Self::KeyDataNotify {
             // SAFETY: A key data message points to valid key data.
             key_data: unsafe { slice::from_raw_parts(value.key_data.data, value.key_data.len) },
         }
     }
-}
 
-impl<'ctx> From<&'ctx sys::ksnp_message> for Message<'ctx> {
-    fn from(value: &'ctx sys::ksnp_message) -> Self {
+    /// Converts a message from a raw message.
+    ///
+    /// # Safety
+    ///
+    /// The raw message must point to data that is valid for the lifetime of this
+    /// message.
+    pub unsafe fn from_message(value: sys::ksnp_message) -> Option<Self> {
         // SAFETY: The union's type dictates which field is set.
-        unsafe {
+        let message = unsafe {
             match value.type_ {
-                sys::ksnp_message_type::KSNP_MSG_ERROR => Message::from(&value.anon_1.error),
-                sys::ksnp_message_type::KSNP_MSG_VERSION => Message::from(&value.anon_1.version),
+                sys::ksnp_message_type::KSNP_MSG_NONE => return None,
+                sys::ksnp_message_type::KSNP_MSG_ERROR => Message::from(value.anon_1.error),
+                sys::ksnp_message_type::KSNP_MSG_VERSION => Message::from(value.anon_1.version),
                 sys::ksnp_message_type::KSNP_MSG_OPEN_STREAM => {
-                    Message::from(&value.anon_1.open_stream)
+                    Message::from_open_stream(value.anon_1.open_stream)
                 }
                 sys::ksnp_message_type::KSNP_MSG_OPEN_STREAM_REPLY => {
-                    Message::from(&value.anon_1.open_stream_reply)
+                    Message::from_open_stream_reply(value.anon_1.open_stream_reply)
                 }
                 sys::ksnp_message_type::KSNP_MSG_CLOSE_STREAM => {
-                    Message::from(&value.anon_1.close_stream)
+                    Message::from(value.anon_1.close_stream)
                 }
                 sys::ksnp_message_type::KSNP_MSG_CLOSE_STREAM_REPLY => {
-                    Message::from(&value.anon_1.close_stream_reply)
+                    Message::from(value.anon_1.close_stream_reply)
                 }
                 sys::ksnp_message_type::KSNP_MSG_CLOSE_STREAM_NOTIFY => {
-                    Message::from(&value.anon_1.close_stream_notify)
+                    Message::from_close_stream_notify(value.anon_1.close_stream_notify)
                 }
                 sys::ksnp_message_type::KSNP_MSG_SUSPEND_STREAM => {
-                    Message::from(&value.anon_1.suspend_stream)
+                    Message::from(value.anon_1.suspend_stream)
                 }
                 sys::ksnp_message_type::KSNP_MSG_SUSPEND_STREAM_REPLY => {
-                    Message::from(&value.anon_1.suspend_stream_reply)
+                    Message::from_suspend_stream_reply(value.anon_1.suspend_stream_reply)
                 }
                 sys::ksnp_message_type::KSNP_MSG_SUSPEND_STREAM_NOTIFY => {
-                    Message::from(&value.anon_1.suspend_stream_notify)
+                    Message::from(value.anon_1.suspend_stream_notify)
                 }
                 sys::ksnp_message_type::KSNP_MSG_KEEP_ALIVE_STREAM => {
-                    Message::from(&value.anon_1.keep_alive_stream)
+                    Message::from(value.anon_1.keep_alive_stream)
                 }
                 sys::ksnp_message_type::KSNP_MSG_KEEP_ALIVE_STREAM_REPLY => {
-                    Message::from(&value.anon_1.keep_alive_stream_reply)
+                    Message::from_keep_alive_stream_reply(value.anon_1.keep_alive_stream_reply)
                 }
                 sys::ksnp_message_type::KSNP_MSG_CAPACITY_NOTIFY => {
-                    Message::from(&value.anon_1.capacity_notify)
+                    Message::from(value.anon_1.capacity_notify)
                 }
                 sys::ksnp_message_type::KSNP_MSG_KEY_DATA_NOTIFY => {
-                    Message::from(&value.anon_1.key_data_notify)
+                    Message::from_key_data_notify(value.anon_1.key_data_notify)
                 }
 
                 // ASSERT: The type must be one of constants of the message_type
                 // enumeration.
                 _ => unreachable!(),
             }
-        }
+        };
+        Some(message)
     }
 }
 

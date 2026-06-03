@@ -216,7 +216,7 @@ concept IoProcessor =
 class message_context_t : public ksnp::unique_obj<ksnp_message_context *, ksnp_message_context_destroy>
 {
 public:
-    using result_type = std::optional<ksnp::message_t>;
+    using result_type = std::optional<ksnp::message>;
 
     message_context_t() : unique_obj(nullptr)
     {
@@ -254,7 +254,7 @@ public:
 
     auto next_event() -> result_type
     {
-        ksnp_message const *msg;
+        ksnp_message        msg{};
         ksnp_protocol_error protocol_error{};
         if (auto err = ::ksnp_message_context_next_message(**this, &msg, &protocol_error);
             err != ksnp_error::KSNP_E_NO_ERROR) {
@@ -263,11 +263,7 @@ public:
             }
             throw ksnp_exception(err);
         }
-
-        if (msg == nullptr) {
-            return std::nullopt;
-        }
-        return ksnp::into_message(*msg);
+        return ksnp::into_message(msg);
     }
 
     void write_message(ksnp_message const *msg)

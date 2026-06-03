@@ -53,6 +53,8 @@ ENUM_TYPE(ksnp_message_type, uint16_t){
     KSNP_MSG_KEEP_ALIVE_STREAM_REPLY = 11,
     KSNP_MSG_CAPACITY_NOTIFY         = 12,
     KSNP_MSG_KEY_DATA_NOTIFY         = 13,
+    // Note: The value for KSNP_MSG_NONE is not a valid protocol value.
+    KSNP_MSG_NONE                    = 0xFF,
 };
 
 /// @brief Concrete type for @ref ksnp_message_type.
@@ -259,6 +261,7 @@ struct ksnp_message {
     ///
     /// The member set is determined by the @a type member.
     union {
+        int                                     none;
         struct ksnp_msg_error                   error;
         struct ksnp_msg_version                 version;
         struct ksnp_msg_open_stream             open_stream;

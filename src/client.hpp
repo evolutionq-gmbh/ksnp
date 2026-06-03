@@ -66,7 +66,7 @@ private:
      * @param msg Message that was received that should be acted upon.
      * @return Resulting event, if any.
      */
-    [[nodiscard]] auto process_message(ksnp_message const &msg) -> std::optional<ksnp::client_event>;
+    [[nodiscard]] auto process_message(ksnp::message const &msg) -> std::optional<ksnp::client_event>;
 
     /**
      * @brief Add a message to send to the connected server.
@@ -75,7 +75,7 @@ private:
      *
      * @param msg Message to send to the server.
      */
-    void push_message(ksnp::message_t msg);
+    void push_message(ksnp::message msg);
 
     /**
      * @brief Register an error and send a protocol error message with the given

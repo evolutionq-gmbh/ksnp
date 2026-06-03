@@ -337,20 +337,20 @@ constexpr auto operator""_zsv(char const *str, size_t len) noexcept -> zstring_v
     };
 }
 
-using message_t = std::variant<ksnp_msg_version,
-                               ksnp_msg_open_stream,
-                               ksnp_msg_open_stream_reply,
-                               ksnp_msg_close_stream,
-                               ksnp_msg_close_stream_notify,
-                               ksnp_msg_close_stream_reply,
-                               ksnp_msg_suspend_stream,
-                               ksnp_msg_suspend_stream_notify,
-                               ksnp_msg_suspend_stream_reply,
-                               ksnp_msg_capacity_notify,
-                               ksnp_msg_key_data_notify,
-                               ksnp_msg_keep_alive_stream,
-                               ksnp_msg_keep_alive_stream_reply,
-                               ksnp_msg_error>;
+using message = std::variant<ksnp_msg_version,
+                             ksnp_msg_open_stream,
+                             ksnp_msg_open_stream_reply,
+                             ksnp_msg_close_stream,
+                             ksnp_msg_close_stream_notify,
+                             ksnp_msg_close_stream_reply,
+                             ksnp_msg_suspend_stream,
+                             ksnp_msg_suspend_stream_notify,
+                             ksnp_msg_suspend_stream_reply,
+                             ksnp_msg_capacity_notify,
+                             ksnp_msg_key_data_notify,
+                             ksnp_msg_keep_alive_stream,
+                             ksnp_msg_keep_alive_stream_reply,
+                             ksnp_msg_error>;
 
 using client_event = std::variant<ksnp_client_event_handshake,
                                   ksnp_client_event_stream_open,
@@ -374,7 +374,7 @@ struct overloads : Ts... {
     using Ts::operator()...;
 };
 
-auto inline into_message(message_t msg) noexcept -> ::ksnp_message
+auto inline into_message(message msg) noexcept -> ::ksnp_message
 {
     auto const visitor = overloads{
         [](ksnp_msg_version msg) -> ksnp_message {
@@ -563,7 +563,7 @@ auto inline into_event(client_event event) noexcept -> ksnp_client_event
     return std::visit(visitor, event);
 }
 
-auto inline into_message(::ksnp_message msg) -> message_t
+auto inline into_message(::ksnp_message msg) -> std::optional<message>
 {
     switch (msg.type) {
     case ksnp_message_type::KSNP_MSG_ERROR:
@@ -594,6 +594,8 @@ auto inline into_message(::ksnp_message msg) -> message_t
         return msg.capacity_notify;
     case ksnp_message_type::KSNP_MSG_KEY_DATA_NOTIFY:
         return msg.key_data_notify;
+    case ksnp_message_type::KSNP_MSG_NONE:
+        return std::nullopt;
     default:
         throw exception(ksnp_error::KSNP_E_INVALID_MESSAGE_TYPE);
     }

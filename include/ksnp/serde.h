@@ -266,11 +266,10 @@ NODISCARD ksnp_error ksnp_message_context_write_data(struct ksnp_message_context
  * @ref ksnp_message_context_destroy(), or the underlying buffer is modified.
  *
  * @param ctx The message context containing the message data.
- * @param msg [out] Pointer where the address of the last decoded message is
- * written to. This message is valid until another operation modifies the
- * context. This pointer is set to the last message received, or NULL if no
- * message is available. The output of this parameter is only valid if the
- * return value is @ref KSNP_E_NO_ERROR.
+ * @param message [out] Pointer where the last decoded message is written to.
+ * The data in this message is valid until another operation modifies the
+ * context. The output of this parameter is only valid if the return value is
+ * @ref KSNP_E_NO_ERROR.
  * @param protocol_error [out] Pointer where the specific cause of a protocol
  * violation is written to. The output of this parameter is only valid if the
  * return value is @ref KSNP_E_PROTOCOL_ERROR.
@@ -281,7 +280,7 @@ NODISCARD ksnp_error ksnp_message_context_write_data(struct ksnp_message_context
  * @return Any of the values from the @ref ksnp_error enum on failure.
  */
 NODISCARD ksnp_error ksnp_message_context_next_message(struct ksnp_message_context *ctx,
-                                                       struct ksnp_message const  **msg,
+                                                       struct ksnp_message         *message,
                                                        struct ksnp_protocol_error  *protocol_error) NOEXCEPT;
 
 /**

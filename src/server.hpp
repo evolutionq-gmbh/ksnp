@@ -123,7 +123,7 @@ public:
     void close_connection(ksnp_close_direction dir);
 
 private:
-    [[nodiscard]] auto process_message(ksnp_message const &msg) -> std::optional<ksnp::server_event>;
+    [[nodiscard]] auto process_message(ksnp::message const &msg) -> std::optional<ksnp::server_event>;
 
     /**
      * @brief Add a message to send to the connected client.
@@ -134,7 +134,7 @@ private:
      *
      * @param msg Message to send to the client.
      */
-    void push_message(ksnp::message_t msg);
+    void push_message(ksnp::message msg);
 
     /**
      * @brief Register an error and send a protocol error message with the given

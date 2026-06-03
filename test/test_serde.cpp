@@ -24,9 +24,9 @@ BOOST_AUTO_TEST_CASE(test_message_context_basics)
 {
     message_context_t                      ctx;
     std::array<unsigned char, BUFFER_SIZE> write_buffer{};
-    ksnp::message_t const                  version_message = ksnp_msg_version{
-                         .minimum_version = ksnp_protocol_version::PROTOCOL_V1,
-                         .maximum_version = ksnp_protocol_version::PROTOCOL_V1,
+    ksnp::message const                    version_message = ksnp_msg_version{
+                           .minimum_version = ksnp_protocol_version::PROTOCOL_V1,
+                           .maximum_version = ksnp_protocol_version::PROTOCOL_V1,
     };
     std::array<unsigned char, 6> const version_data{0, 1, 0, 6, 1, 1};
 
@@ -61,9 +61,9 @@ BOOST_AUTO_TEST_CASE(test_message_context_multiple)
 {
     message_context_t                      ctx;
     std::array<unsigned char, BUFFER_SIZE> write_buffer{};
-    ksnp::message_t const                  version_message = ksnp_msg_version{
-                         .minimum_version = ksnp_protocol_version::PROTOCOL_V1,
-                         .maximum_version = ksnp_protocol_version::PROTOCOL_V1,
+    ksnp::message const                    version_message = ksnp_msg_version{
+                           .minimum_version = ksnp_protocol_version::PROTOCOL_V1,
+                           .maximum_version = ksnp_protocol_version::PROTOCOL_V1,
     };
     std::array<unsigned char, 6> const version_data{0, 1, 0, 6, 1, 1};
 
@@ -143,9 +143,9 @@ BOOST_AUTO_TEST_CASE(test_message_context_partial_write)
 {
     message_context_t                      ctx;
     std::array<unsigned char, BUFFER_SIZE> write_buffer{};
-    ksnp::message_t const                  version_message = ksnp_msg_version{
-                         .minimum_version = ksnp_protocol_version::PROTOCOL_V1,
-                         .maximum_version = ksnp_protocol_version::PROTOCOL_V1,
+    ksnp::message const                    version_message = ksnp_msg_version{
+                           .minimum_version = ksnp_protocol_version::PROTOCOL_V1,
+                           .maximum_version = ksnp_protocol_version::PROTOCOL_V1,
     };
     std::array<unsigned char, 6> const version_data{0, 1, 0, 6, 1, 1};
 
@@ -233,7 +233,7 @@ ksnp_stream_qos_params const qos_params{
     .extensions     = nullptr,
 };
 
-std::array<ksnp::message_t, 20> const good_messages = {
+std::array<ksnp::message, 20> const good_messages = {
     ksnp_msg_error{.code = ksnp_error_code{0xFFFF0000}},
     ksnp_msg_version{.minimum_version = ksnp_protocol_version::PROTOCOL_V1,
                    .maximum_version = ksnp_protocol_version::PROTOCOL_V1},
@@ -381,7 +381,7 @@ ksnp_stream_open_params const req_params_too_large{
     .required_extensions = nullptr,
 };
 
-std::array<ksnp::message_t, 17> const bad_messages_ser = {
+std::array<ksnp::message, 17> const bad_messages_ser = {
     ksnp_msg_version{.minimum_version = static_cast<ksnp_protocol_version>(2),
                      .maximum_version = ksnp_protocol_version::PROTOCOL_V1},
     ksnp_msg_version{.minimum_version = static_cast<ksnp_protocol_version>(0xFF),

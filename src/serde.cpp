@@ -948,23 +948,22 @@ private:
     buffer input_data;
     buffer output_data;
 
-    std::optional<struct ksnp_message> last_message;
-    std::string                        status_message;
-    message_payload                    last_message_payload;
-    bool                               eof;
+    std::optional<uint16_t> last_message_len;
+    std::string             status_message;
+    message_payload         last_message_payload;
+    bool                    eof;
 
     void free_last_message()
     {
-        if (!this->last_message.has_value()) {
+        if (!this->last_message_len.has_value()) {
             return;
         }
 
-        this->last_message.reset();
+        this->input_data.consume(*this->last_message_len);
+
+        this->last_message_len.reset();
         this->status_message.clear();
         this->last_message_payload = std::monostate{};
-        auto msg_len_ser           = std::span{this->input_data}.subspan<2, sizeof(uint16_t)>();
-        auto msg_len               = uint_from_be<uint16_t>(msg_len_ser);
-        this->input_data.consume(msg_len);
     }
 
     auto load_next_string(std::span<uint8_t const> &data) -> char const *
@@ -1193,9 +1192,8 @@ public:
         }
         auto data = std::span{this->input_data};
 
-        if (this->last_message.has_value()) {
-            auto len_data = data.subspan(2, sizeof(uint16_t));
-            data          = data.subspan(load_next_u16(len_data));
+        if (this->last_message_len.has_value()) {
+            data = data.subspan(*this->last_message_len);
         }
 
         if (data.size() < KSNP_MSG_HEADER_SIZE) {
@@ -1247,7 +1245,7 @@ public:
         return to_copy.size();
     }
 
-    void next_message(struct ksnp_message const **msg)
+    auto next_message() -> std::optional<message>
     {
         // Clear previous message first, if any
         free_last_message();
@@ -1264,24 +1262,23 @@ public:
 
             if (data.size() >= msg_len - KSNP_MSG_HEADER_SIZE) {
                 // Message is complete. Parse message body.
-                this->parse_message(msg_type, data.first(msg_len - KSNP_MSG_HEADER_SIZE));
-                // Message parsed successfully, set output
-                *msg = &(*this->last_message);
-                return;
+                this->last_message_len = msg_len;
+                return this->parse_message(msg_type, data.first(msg_len - KSNP_MSG_HEADER_SIZE));
             }
         }
 
-        *msg = nullptr;
         if (this->eof && !data.empty()) {
             // Receiving channel has been closed, but incomplete message data
             // is still in the buffer.
             this->input_data.truncate(0);
             throw protocol_exception(ksnp_error_code::KSNP_PROT_E_INCOMPLETE_MSG);
         }
+
+        return std::nullopt;
     }
 
-    void parse_message(uint16_t                 type,  // NOLINT(readability-function-cognitive-complexity)
-                       std::span<uint8_t const> data)
+    auto parse_message(uint16_t                 type,  // NOLINT(readability-function-cognitive-complexity)
+                       std::span<uint8_t const> data) -> message
     {
         // Partially initialize a message
         ksnp_message msg = {.type = static_cast<ksnp_message_type>(type), .error = {.code = {}}};
@@ -1417,6 +1414,7 @@ public:
             };
             break;
         }
+        case ksnp_message_type::KSNP_MSG_NONE:
         default:
             throw ksnp::protocol_exception(ksnp_error_code::KSNP_PROT_E_BAD_MSG_TYPE);
         }
@@ -1425,7 +1423,8 @@ public:
             throw ksnp::protocol_exception(ksnp_error_code::KSNP_PROT_E_BAD_MSG_LENGTH, "unexpected extra data");
         }
 
-        this->last_message = msg;
+        // KSNP_MSG_NONE raises an error, so a value exists.
+        return *into_message(msg);
     }
 
     void write_message(struct ksnp_message const *msg)  // NOLINT: readability-function-cognitive-complexity
@@ -1532,6 +1531,7 @@ public:
                 }
                 break;
             }
+            case ksnp_message_type::KSNP_MSG_NONE:
             default:
                 throw exception(ksnp_error::KSNP_E_INVALID_MESSAGE_TYPE);
             }
@@ -1597,14 +1597,19 @@ try {
 CATCH_ALL
 
 auto ksnp_message_context_next_message(struct ksnp_message_context *ctx,
-                                       struct ksnp_message const  **msg,
+                                       struct ksnp_message         *message,
                                        ksnp_protocol_error         *protocol_error) noexcept -> ksnp_error
 try {
     assert(ctx != nullptr);
-    assert(msg != nullptr);
+    assert(message != nullptr);
 
     try {
-        ctx->next_message(msg);
+        if (auto next_message = ctx->next_message()) {
+            *message = into_message(*next_message);
+        } else {
+            *message = ksnp_message{.type = ksnp_message_type::KSNP_MSG_NONE, .none = 0};
+        }
+
     } catch (ksnp::protocol_exception &e) {
         if (protocol_error != nullptr) {
             protocol_error->code        = e.code();
