@@ -11,6 +11,7 @@
 #include <stdexcept>
 #include <string_view>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include <json-c/json_object.h>
@@ -161,7 +162,7 @@ auto operator<=>(struct ksnp_rate const &lhs, struct ksnp_rate const &rhs) -> st
 }
 
 template<std::unsigned_integral TargetUint, typename U8>
-constexpr auto uint_from_be(std::span<U8, sizeof(TargetUint)> data) noexcept -> TargetUint
+[[nodiscard]] constexpr auto uint_from_be(std::span<U8, sizeof(TargetUint)> data) noexcept -> TargetUint
 requires(std::is_same_v<std::decay_t<U8>, uint8_t>)
 {
     constexpr int BITS = std::numeric_limits<U8>::digits;
@@ -215,7 +216,7 @@ auto load_next_enum(std::span<U8> &data) -> T
 }
 
 template<std::unsigned_integral SourceUint, typename U8 = unsigned char>
-constexpr auto uint_to_be(SourceUint val) -> std::array<U8, sizeof(SourceUint)>
+[[nodiscard]] constexpr auto uint_to_be(SourceUint val) -> std::array<U8, sizeof(SourceUint)>
 {
     constexpr std::size_t COUNT = sizeof(SourceUint);
     constexpr int         BITS  = std::numeric_limits<U8>::digits;
@@ -230,6 +231,29 @@ constexpr auto uint_to_be(SourceUint val) -> std::array<U8, sizeof(SourceUint)>
 }
 
 using json_obj_deleter = unique_obj<json_object *, json_object_put>;
+
+class json_obj : json_obj_deleter
+{
+
+public:
+    json_obj() = default;
+
+    explicit json_obj(json_object *obj) : json_obj_deleter(json_object_get(ensure_object(obj)))
+    {}
+
+    using json_obj_deleter::operator*;
+    using json_obj_deleter::operator->;
+    using json_obj_deleter::operator bool;
+
+private:
+    static auto ensure_object(json_object *obj) -> json_object *
+    {
+        if (json_object_is_type(obj, json_type_object) == 0) {
+            throw ksnp::protocol_exception(ksnp_error_code::KSNP_PROT_E_BAD_JSON_TYPE, "expected JSON object");
+        }
+        return obj;
+    }
+};
 
 enum class json_ser_flag : uint8_t {
     plain,
@@ -301,27 +325,48 @@ void check_subobject_allowed_keys(json_object const *obj, string_views... allowe
     }
 }
 
-[[nodiscard]] auto get_subobject_string(json_object const *obj, zstring_view key) -> char const *
+[[nodiscard]] auto get_subobject_string(json_object const *obj, zstring_view key) -> json_obj_deleter
 {
     json_object *subobj = nullptr;
     if (json_object_object_get_ex(obj, key.c_str(), &subobj) == 1 && json_object_get_type(subobj) != json_type_string) {
         throw ksnp::protocol_exception(ksnp_error_code::KSNP_PROT_E_BAD_JSON_TYPE);
     }
     // If obj has no entry for the given key, subobj will still be nullptr
-    // here. The following call is still safe in that case and will return
-    // NULL itself.
-    return json_object_get_string(subobj);
+    // here.
+    return json_obj_deleter(subobj != nullptr ? json_object_get(subobj) : nullptr);
 }
 
-[[nodiscard]] auto json_to_address(json_object const *obj) -> ksnp_address
+class stream_address
+{
+private:
+    json_obj_deleter sae;
+    json_obj_deleter network;
+    ksnp_address     address;
+
+public:
+    stream_address() : address{.sae = nullptr, .network = nullptr}
+    {}
+
+    stream_address(json_obj_deleter sae, json_obj_deleter network)
+        : sae(std::move(sae))
+        , network(std::move(network))
+        , address{.sae = json_object_get_string(*this->sae), .network = json_object_get_string(*this->network)}
+    {}
+
+    [[nodiscard]] auto get_address() const -> ksnp_address const &
+    {
+        return this->address;
+    }
+};
+
+[[nodiscard]] auto json_to_address(json_object const *obj) -> stream_address
 {
     // First check the type of the subobject, and whether it contains
     // unknown keys.
     check_subobject_allowed_keys(obj, json_key_address_sae, json_key_address_network);
 
     // Extract address strings.
-    return ksnp_address{.sae     = get_subobject_string(obj, json_key_address_sae),
-                        .network = get_subobject_string(obj, json_key_address_network)};
+    return {get_subobject_string(obj, json_key_address_sae), get_subobject_string(obj, json_key_address_network)};
 }
 
 [[nodiscard]] auto json_to_rate(json_object const *obj) -> ksnp_rate
@@ -344,35 +389,6 @@ void check_subobject_allowed_keys(json_object const *obj, string_views... allowe
         }
     }
     return rate;
-}
-
-template<typename QosExpectedValue,
-         decltype(std::declval<QosExpectedValue>().range.min) (*ParseObj)(json_object const *)>
-[[nodiscard]] auto json_to_qos_range(json_object const *obj) -> QosExpectedValue
-{
-    // First check the type of the subobject, and whether it contains
-    // unknown keys.
-    check_subobject_allowed_keys(obj, json_key_qos_range_min, json_key_qos_range_max);
-
-    // Get the min and max subobjects and parse them using the given
-    // callback.
-    json_object *min_obj;
-    json_object *max_obj;
-    if (!json_object_object_get_ex(obj, json_key_qos_range_min.c_str(), &min_obj)
-        || !json_object_object_get_ex(obj, json_key_qos_range_max.c_str(), &max_obj)) {
-        throw ksnp::protocol_exception(ksnp_error_code::KSNP_PROT_E_JSON_KEY_MISSING);
-    }
-
-    auto min_val = ParseObj(min_obj);
-    auto max_val = ParseObj(max_obj);
-
-    if (min_val > max_val) {
-        throw ksnp::protocol_exception(ksnp_error_code::KSNP_PROT_E_BAD_JSON_VAL);
-    }
-
-    return {
-        .type = ksnp_qos_type::KSNP_QOS_RANGE, .range = {.min = min_val, .max = max_val}
-    };
 }
 
 void add_stream_id_to_json(json_object *obj, zstring_view key, uuid_t const &stream_id)
@@ -429,7 +445,7 @@ void add_uint_to_json(json_object *obj, zstring_view key, SourceUint val)
     }
 }
 
-auto rate_to_json(struct ksnp_rate rate) -> json_object *
+[[nodiscard]] auto rate_to_json(struct ksnp_rate rate) -> json_object *
 {
     // A numerator of 0 means the field is unset.
     if (rate.bits == 0) {
@@ -533,11 +549,397 @@ void add_qos_rate_to_json(json_object *obj, zstring_view key, ksnp_qos_rate qos)
     add_qos_to_json<ksnp_qos_rate, struct ksnp_rate, rate_to_json>(obj, key, qos);
 }
 
+template<typename T>
+using qos_value = std::variant<std::monostate, std::tuple<T, T>, std::vector<T>>;
+
+template<typename T>
+[[nodiscard]] auto json_to_qos_value(json_object const *obj) -> T;
+
+template<>
+[[nodiscard]] auto json_to_qos_value(json_object const *obj) -> uint16_t
+{
+    return json_to_uint<uint16_t>(obj);
+}
+
+template<>
+[[nodiscard]] auto json_to_qos_value(json_object const *obj) -> uint32_t
+{
+    return json_to_uint<uint32_t>(obj);
+}
+
+template<>
+[[nodiscard]] auto json_to_qos_value(json_object const *obj) -> ksnp_rate
+{
+    return json_to_rate(obj);
+}
+
+template<typename T>
+[[nodiscard]] auto json_to_qos_range(json_object const *obj) -> std::tuple<T, T>
+{
+    // First check the type of the subobject, and whether it contains
+    // unknown keys.
+    check_subobject_allowed_keys(obj, json_key_qos_range_min, json_key_qos_range_max);
+
+    // Get the min and max subobjects and parse them using the given
+    // callback.
+    json_object *min_obj;
+    json_object *max_obj;
+    if (!json_object_object_get_ex(obj, json_key_qos_range_min.c_str(), &min_obj)
+        || !json_object_object_get_ex(obj, json_key_qos_range_max.c_str(), &max_obj)) {
+        throw ksnp::protocol_exception(ksnp_error_code::KSNP_PROT_E_JSON_KEY_MISSING);
+    }
+
+    auto min_val = json_to_qos_value<T>(min_obj);
+    auto max_val = json_to_qos_value<T>(max_obj);
+
+    if (min_val > max_val) {
+        throw ksnp::protocol_exception(ksnp_error_code::KSNP_PROT_E_BAD_JSON_VAL);
+    }
+
+    return {min_val, max_val};
+}
+
+template<typename T>
+[[nodiscard]] auto json_to_qos_list(json_object const *obj) -> std::vector<T>
+{
+    auto count = json_object_array_length(obj);
+    if (count == 0) {
+        throw ksnp::protocol_exception(ksnp_error_code::KSNP_PROT_E_BAD_JSON_VAL, "empty QoS expected array");
+    }
+
+    std::vector<T> qos_list;
+    qos_list.reserve(count);
+    for (size_t i = 0; i < count; i++) {
+        auto *entry = json_object_array_get_idx(obj, i);
+        qos_list.push_back(json_to_qos_value<T>(entry));
+    }
+
+    return qos_list;
+}
+
+template<typename T>
+[[nodiscard]] auto json_to_qos(json_object const *obj) -> qos_value<T>
+{
+    switch (json_object_get_type(obj)) {
+    case json_type_null:
+        return {};
+    case json_type_object:
+        return json_to_qos_range<T>(obj);
+    case json_type_array:
+        return json_to_qos_list<T>(obj);
+    case json_type_boolean:
+    case json_type_double:
+    case json_type_int:
+    case json_type_string:
+    default:
+        throw ksnp::protocol_exception(ksnp_error_code::KSNP_PROT_E_BAD_JSON_TYPE);
+    }
+}
+template<typename T, typename U>
+void set_qos(qos_value<T> value, U &dest, std::vector<T> &storage)
+{
+    std::visit(overloads{
+                   [&dest](std::monostate) -> void {
+                       dest.type = ksnp_qos_type::KSNP_QOS_NULL;
+                       dest.none = 0;
+                   },
+                   [&dest](std::tuple<T, T> value) -> void {
+                       dest.type      = ksnp_qos_type::KSNP_QOS_RANGE;
+                       dest.range.min = std::get<0>(value);
+                       dest.range.max = std::get<1>(value);
+                   },
+                   [&dest, &storage](std::vector<T> value) -> void {
+                       dest.type        = ksnp_qos_type::KSNP_QOS_LIST;
+                       dest.list.values = value.data();
+                       dest.list.count  = value.size();
+                       storage          = std::move(value);
+                   },
+               },
+               std::move(value));
+}
+
+}  // namespace
+
+class stream_open_params
+{
+private:
+    ksnp_stream_open_params params;
+    stream_address          source;
+    stream_address          destination;
+    json_obj                extensions;
+    json_obj                required_extensions;
+
+public:
+    stream_open_params(ksnp_stream_open_params params,
+                       stream_address          source,
+                       stream_address          destination,
+                       json_obj                extensions,
+                       json_obj                required_extensions)
+        : params(params)
+        , source(std::move(source))
+        , destination(std::move(destination))
+        , extensions(std::move(extensions))
+        , required_extensions(std::move(required_extensions))
+    {}
+
+    [[nodiscard]] auto get_params() -> ksnp_stream_open_params *
+    {
+        return &this->params;
+    }
+};
+
+class stream_accepted_params
+{
+private:
+    ksnp_stream_accepted_params params;
+    json_obj                    extensions;
+
+public:
+    stream_accepted_params(ksnp_stream_accepted_params params, json_obj extensions)
+        : params(params)
+        , extensions(std::move(extensions))
+    {}
+
+    [[nodiscard]] auto get_params() -> ksnp_stream_accepted_params *
+    {
+        return &this->params;
+    }
+};
+
+class stream_qos_params
+{
+private:
+    ksnp_stream_qos_params params;
+    std::vector<uint16_t>  chunk_list;
+    std::vector<ksnp_rate> min_bps_list;
+    std::vector<uint32_t>  ttl_list;
+    std::vector<uint32_t>  provision_size_list;
+    json_obj               extensions;
+
+public:
+    stream_qos_params(ksnp_stream_qos_params params,
+                      std::vector<uint16_t>  chunk_list,
+                      std::vector<ksnp_rate> min_bps_list,
+                      std::vector<uint32_t>  ttl_list,
+                      std::vector<uint32_t>  provision_size_list,
+                      json_obj               extensions)
+        : params(params)
+        , chunk_list(std::move(chunk_list))
+        , min_bps_list(std::move(min_bps_list))
+        , ttl_list(std::move(ttl_list))
+        , provision_size_list(std::move(provision_size_list))
+        , extensions(std::move(extensions))
+    {}
+
+    [[nodiscard]] auto get_params() -> ksnp_stream_qos_params *
+    {
+        return &this->params;
+    }
+};
+
+class key_data_parameters
+{
+private:
+    json_obj parameters;
+
+public:
+    explicit key_data_parameters(json_obj parameters) : parameters(std::move(parameters))
+    {}
+
+    [[nodiscard]] auto get_parameters() -> json_object *
+    {
+        return *this->parameters;
+    }
+};
+
+namespace
+{
+
+[[nodiscard]] auto json_to_stream_params(json_object *json) -> stream_open_params
+{
+    struct ksnp_stream_open_params params{};
+    stream_address                 source;
+    stream_address                 destination;
+    json_obj                       extensions;
+    json_obj                       required_extensions;
+
+    auto end_iter = json_object_iter_end(json);
+    for (auto it = json_object_iter_begin(json); json_object_iter_equal(&it, &end_iter) == 0;
+         json_object_iter_next(&it)) {
+        std::string_view name  = json_object_iter_peek_name(&it);
+        auto            *value = json_object_iter_peek_value(&it);
+        if (name == json_key_ksid) {
+            json_to_stream_id(value, params.stream_id);
+        } else if (name == json_key_source) {
+            source        = json_to_address(value);
+            params.source = source.get_address();
+        } else if (name == json_key_destination) {
+            destination        = json_to_address(value);
+            params.destination = destination.get_address();
+        } else if (name == json_key_chunk_size) {
+            params.chunk_size = json_to_u16(value);
+        } else if (name == json_key_capacity) {
+            params.capacity = json_to_u32(value);
+        } else if (name == json_key_min_bps) {
+            params.min_bps = json_to_rate(value);
+        } else if (name == json_key_max_bps) {
+            params.max_bps = json_to_rate(value);
+        } else if (name == json_key_ttl) {
+            params.ttl = json_to_u32(value);
+        } else if (name == json_key_provision_size) {
+            params.provision_size = json_to_u32(value);
+        } else if (name == json_key_extensions) {
+            extensions        = json_obj(value);
+            params.extensions = *extensions;
+        } else if (name == json_key_required_extensions) {
+            if (json_object_get_type(value) != json_type_object) {
+                throw ksnp::protocol_exception(ksnp_error_code::KSNP_PROT_E_BAD_JSON_TYPE);
+            }
+            required_extensions        = json_obj(value);
+            params.required_extensions = *required_extensions;
+        } else {
+            throw ksnp::protocol_exception(ksnp_error_code::KSNP_PROT_E_BAD_JSON_KEY);
+        }
+    }
+
+    // Check that required fields exist. Check constraints on numerical
+    // limits which are not automatically satisfied due to type limits.
+    if (params.destination.sae == nullptr) {
+        throw ksnp::protocol_exception(ksnp_error_code::KSNP_PROT_E_JSON_KEY_MISSING);
+    }
+    if (params.chunk_size > KSNP_MAX_CHUNK_SIZE || (params.max_bps.bits > 0 && params.max_bps < params.min_bps)
+        || (params.provision_size > 0 && params.provision_size < params.chunk_size)) {
+        throw ksnp::protocol_exception(ksnp_error_code::KSNP_PROT_E_BAD_JSON_VAL);
+    }
+
+    return {params, std::move(source), std::move(destination), std::move(extensions), std::move(required_extensions)};
+}
+
+[[nodiscard]] auto json_to_stream_reply_params(json_object *json) -> stream_accepted_params
+{
+    struct ksnp_stream_accepted_params params{};
+    json_obj                           extensions;
+    bool                               bps_set = false;
+
+    auto end_iter = json_object_iter_end(json);
+    for (auto it = json_object_iter_begin(json); json_object_iter_equal(&it, &end_iter) == 0;
+         json_object_iter_next(&it)) {
+        auto const *name  = json_object_iter_peek_name(&it);
+        auto       *value = json_object_iter_peek_value(&it);
+        if (name == json_key_ksid) {
+            json_to_stream_id(value, params.stream_id);
+        } else if (name == json_key_chunk_size) {
+            params.chunk_size = json_to_u16(value);
+        } else if (name == json_key_position) {
+            params.position = json_to_u32(value);
+        } else if (name == json_key_max_key_delay) {
+            params.max_key_delay = json_to_u32(value);
+        } else if (name == json_key_min_bps) {
+            bps_set        = true;
+            params.min_bps = json_to_rate(value);
+        } else if (name == json_key_provision_size) {
+            params.provision_size = json_to_u32(value);
+        } else if (name == json_key_extensions) {
+            extensions        = json_obj(value);
+            params.extensions = *extensions;
+        } else {
+            throw ksnp::protocol_exception(ksnp_error_code::KSNP_PROT_E_BAD_JSON_KEY);
+        }
+    }
+
+    // Check that required fields exist. Check constraints on numerical
+    // limits which are not automatically satisfied due to type limits.
+    if (!bps_set) {
+        throw ksnp::protocol_exception(ksnp_error_code::KSNP_PROT_E_JSON_KEY_MISSING);
+    }
+    if (params.chunk_size > KSNP_MAX_CHUNK_SIZE
+        || (params.provision_size > 0 && params.provision_size < params.chunk_size)) {
+        throw ksnp::protocol_exception(ksnp_error_code::KSNP_PROT_E_BAD_JSON_VAL);
+    }
+
+    return {params, std::move(extensions)};
+}
+
+[[nodiscard]] auto json_to_stream_qos_params(json_object *json) -> stream_qos_params
+{
+    struct ksnp_stream_qos_params params{
+        .chunk_size     = {.type = ksnp_qos_type::KSNP_QOS_NONE, .none = 0},
+        .min_bps        = {.type = ksnp_qos_type::KSNP_QOS_NONE, .none = 0},
+        .ttl            = {.type = ksnp_qos_type::KSNP_QOS_NONE, .none = 0},
+        .provision_size = {.type = ksnp_qos_type::KSNP_QOS_NONE, .none = 0},
+        .extensions     = nullptr,
+    };
+    std::vector<uint16_t>  chunk_size_list;
+    std::vector<ksnp_rate> min_bps_list;
+    std::vector<uint32_t>  ttl_list;
+    std::vector<uint32_t>  provision_size_list;
+    json_obj               extensions;
+
+    auto end_iter = json_object_iter_end(json);
+    for (auto it = json_object_iter_begin(json); json_object_iter_equal(&it, &end_iter) == 0;
+         json_object_iter_next(&it)) {
+        std::string_view name  = json_object_iter_peek_name(&it);
+        auto            *value = json_object_iter_peek_value(&it);
+
+        if (name == json_key_chunk_size) {
+            set_qos(json_to_qos<uint16_t>(value), params.chunk_size, chunk_size_list);
+        } else if (name == json_key_min_bps) {
+            set_qos(json_to_qos<ksnp_rate>(value), params.min_bps, min_bps_list);
+        } else if (name == json_key_ttl) {
+            set_qos(json_to_qos<uint32_t>(value), params.ttl, ttl_list);
+        } else if (name == json_key_provision_size) {
+            set_qos(json_to_qos<uint32_t>(value), params.provision_size, provision_size_list);
+        } else if (name == json_key_extensions) {
+            extensions        = json_obj(value);
+            params.extensions = *extensions;
+        } else {
+            throw ksnp::protocol_exception(ksnp_error_code::KSNP_PROT_E_BAD_JSON_KEY);
+        }
+    }
+
+    // Check constraints for chunk size, everything else is enforced by
+    // type limits.
+    switch (params.chunk_size.type) {
+    case ksnp_qos_type::KSNP_QOS_RANGE:
+        if (params.chunk_size.range.max > KSNP_MAX_CHUNK_SIZE) {
+            throw ksnp::protocol_exception(ksnp_error_code::KSNP_PROT_E_BAD_JSON_VAL);
+        }
+        break;
+    case ksnp_qos_type::KSNP_QOS_LIST: {
+#ifdef __clang__
+#pragma clang unsafe_buffer_usage begin
+#endif
+        auto values = std::span{params.chunk_size.list.values, params.chunk_size.list.count};
+#ifdef __clang__
+#pragma clang unsafe_buffer_usage end
+#endif
+        for (auto val: values) {
+            if (val > KSNP_MAX_CHUNK_SIZE) {
+                throw ksnp::protocol_exception(ksnp_error_code::KSNP_PROT_E_BAD_JSON_VAL);
+            }
+        }
+        break;
+    }
+    case ksnp_qos_type::KSNP_QOS_NONE:
+    case ksnp_qos_type::KSNP_QOS_NULL:
+    default:
+        break;
+    }
+
+    return {params,
+            std::move(chunk_size_list),
+            std::move(min_bps_list),
+            std::move(ttl_list),
+            std::move(provision_size_list),
+            std::move(extensions)};
+}
+
 }  // namespace
 
 struct ksnp_message_context {
 private:
-    using qos_lists = std::variant<std::vector<uint16_t>, std::vector<uint32_t>, std::vector<struct ksnp_rate>>;
+    using message_payload = std::
+        variant<std::monostate, stream_open_params, stream_accepted_params, stream_qos_params, key_data_parameters>;
 
     // Storage used when no user-provided buffers are used.
     std::optional<vector_buffer> input_storage;
@@ -546,14 +948,10 @@ private:
     buffer input_data;
     buffer output_data;
 
-    std::optional<json_obj_deleter>            parsed_json;
-    std::optional<struct ksnp_message>         last_message;
-    std::optional<std::string>                 status_message;
-    std::optional<ksnp_stream_open_params>     stream_params;
-    std::optional<ksnp_stream_accepted_params> stream_params_reply;
-    std::optional<ksnp_stream_qos_params>      stream_params_qos;
-    std::vector<qos_lists>                     registered_qos_lists;
-    bool                                       eof;
+    std::optional<struct ksnp_message> last_message;
+    std::string                        status_message;
+    message_payload                    last_message_payload;
+    bool                               eof;
 
     void free_last_message()
     {
@@ -562,39 +960,33 @@ private:
         }
 
         this->last_message.reset();
-        this->status_message.reset();
-        this->stream_params.reset();
-        this->stream_params_reply.reset();
-        this->stream_params_qos.reset();
-        this->parsed_json.reset();
-        this->registered_qos_lists.clear();
-        auto msg_len_ser = std::span{this->input_data}.subspan<2, sizeof(uint16_t)>();
-        auto msg_len     = uint_from_be<uint16_t>(msg_len_ser);
+        this->status_message.clear();
+        this->last_message_payload = std::monostate{};
+        auto msg_len_ser           = std::span{this->input_data}.subspan<2, sizeof(uint16_t)>();
+        auto msg_len               = uint_from_be<uint16_t>(msg_len_ser);
         this->input_data.consume(msg_len);
     }
 
     auto load_next_string(std::span<uint8_t const> &data) -> char const *
     {
         if (data.empty()) {
-            this->status_message = std::nullopt;
+            this->status_message.clear();
             return nullptr;
         }
-        this->status_message.emplace(data.begin(), data.end());
+        this->status_message.assign(data.begin(), data.end());
         data = data.subspan(data.size());
-        return this->status_message->c_str();
+        return this->status_message.c_str();
     }
 
-    auto load_next_json(std::span<uint8_t const> &data, size_t json_len) -> json_object *
+    auto load_next_json(std::span<uint8_t const> &data, size_t json_len) -> json_obj
     {
-        this->parsed_json.reset();
-
         // json_tokener_parse_ex reads the length as `int`.
         if (json_len > data.size() || !std::in_range<int>(json_len)) {
             throw ksnp::protocol_exception(ksnp_error_code::KSNP_PROT_E_BAD_JSON_LENGTH, "JSON length exceeds maximum");
         }
 
         if (json_len == 0) {
-            return nullptr;
+            return {};
         }
 
         // Wrap the tokener in a unique_obj so it is properly freed in case of
@@ -606,14 +998,14 @@ private:
             json_tokener_parse_ex(tok.get(), reinterpret_cast<char const *>(data_ptr), static_cast<int>(json_len));
         if (obj == nullptr) {
             this->status_message = json_tokener_error_desc(json_tokener_get_error(tok.get()));
-            throw ksnp::protocol_exception(ksnp_error_code::KSNP_PROT_E_BAD_JSON, this->status_message->c_str());
+            throw ksnp::protocol_exception(ksnp_error_code::KSNP_PROT_E_BAD_JSON, this->status_message.c_str());
         }
 
         // Wrap the JSON object in a unique_ptr so it automatically frees its
         // data when it goes out of scope. If the function is successful, store
         // this object in the message context to extend the lifetime of all
         // pointers into the JSON data.
-        json_obj_deleter raii_obj(obj);
+        json_obj raii_obj(obj);
 
         // After the parsed JSON object, only whitespace is allowed within the
         // JSON field of the message (as defined by `json_len`).
@@ -625,15 +1017,9 @@ private:
                                            "extra data after JSON object");
         }
 
-        if (json_object_is_type(obj, json_type_object) == 0) {
-            throw ksnp::protocol_exception(ksnp_error_code::KSNP_PROT_E_BAD_JSON_TYPE,
-                                           "unexpected top level object type");
-        }
+        data = data.subspan(json_len);
 
-        this->parsed_json = std::move(raii_obj);
-        data              = data.subspan(json_len);
-
-        return this->parsed_json->get();
+        return raii_obj;
     }
 
     template<std::unsigned_integral T>
@@ -784,225 +1170,6 @@ private:
         this->write_json(obj, json_ser_flag::with_length);
     }
 
-    [[nodiscard]] auto json_to_stream_params(json_object *json) -> ksnp_stream_open_params const *
-    {
-        struct ksnp_stream_open_params params{};
-
-        auto end_iter = json_object_iter_end(json);
-        for (auto it = json_object_iter_begin(json); json_object_iter_equal(&it, &end_iter) == 0;
-             json_object_iter_next(&it)) {
-            std::string_view name  = json_object_iter_peek_name(&it);
-            auto            *value = json_object_iter_peek_value(&it);
-            if (name == json_key_ksid) {
-                json_to_stream_id(value, params.stream_id);
-            } else if (name == json_key_source) {
-                params.source = json_to_address(value);
-            } else if (name == json_key_destination) {
-                params.destination = json_to_address(value);
-            } else if (name == json_key_chunk_size) {
-                params.chunk_size = json_to_u16(value);
-            } else if (name == json_key_capacity) {
-                params.capacity = json_to_u32(value);
-            } else if (name == json_key_min_bps) {
-                params.min_bps = json_to_rate(value);
-            } else if (name == json_key_max_bps) {
-                params.max_bps = json_to_rate(value);
-            } else if (name == json_key_ttl) {
-                params.ttl = json_to_u32(value);
-            } else if (name == json_key_provision_size) {
-                params.provision_size = json_to_u32(value);
-            } else if (name == json_key_extensions) {
-                params.extensions = value;
-            } else if (name == json_key_required_extensions) {
-                params.required_extensions = value;
-            } else {
-                throw ksnp::protocol_exception(ksnp_error_code::KSNP_PROT_E_BAD_JSON_KEY);
-            }
-        }
-
-        // Check that required fields exist. Check constraints on numerical
-        // limits which are not automatically satisfied due to type limits.
-        if (params.destination.sae == nullptr) {
-            throw ksnp::protocol_exception(ksnp_error_code::KSNP_PROT_E_JSON_KEY_MISSING);
-        }
-        if (params.chunk_size > KSNP_MAX_CHUNK_SIZE || (params.max_bps.bits > 0 && params.max_bps < params.min_bps)
-            || (params.provision_size > 0 && params.provision_size < params.chunk_size)) {
-            throw ksnp::protocol_exception(ksnp_error_code::KSNP_PROT_E_BAD_JSON_VAL);
-        }
-
-        this->stream_params = params;
-        return &this->stream_params.value();
-    }
-
-    [[nodiscard]] auto json_to_stream_reply_params(json_object *json) -> ksnp_stream_accepted_params const *
-    {
-        struct ksnp_stream_accepted_params params{};
-        bool                               bps_set = false;
-
-        auto end_iter = json_object_iter_end(json);
-        for (auto it = json_object_iter_begin(json); json_object_iter_equal(&it, &end_iter) == 0;
-             json_object_iter_next(&it)) {
-            auto const *name  = json_object_iter_peek_name(&it);
-            auto       *value = json_object_iter_peek_value(&it);
-            if (name == json_key_ksid) {
-                json_to_stream_id(value, params.stream_id);
-            } else if (name == json_key_chunk_size) {
-                params.chunk_size = json_to_u16(value);
-            } else if (name == json_key_position) {
-                params.position = json_to_u32(value);
-            } else if (name == json_key_max_key_delay) {
-                params.max_key_delay = json_to_u32(value);
-            } else if (name == json_key_min_bps) {
-                bps_set        = true;
-                params.min_bps = json_to_rate(value);
-            } else if (name == json_key_provision_size) {
-                params.provision_size = json_to_u32(value);
-            } else if (name == json_key_extensions) {
-                params.extensions = value;
-            } else {
-                throw ksnp::protocol_exception(ksnp_error_code::KSNP_PROT_E_BAD_JSON_KEY);
-            }
-        }
-
-        // Check that required fields exist. Check constraints on numerical
-        // limits which are not automatically satisfied due to type limits.
-        if (!bps_set) {
-            throw ksnp::protocol_exception(ksnp_error_code::KSNP_PROT_E_JSON_KEY_MISSING);
-        }
-        if (params.chunk_size > KSNP_MAX_CHUNK_SIZE
-            || (params.provision_size > 0 && params.provision_size < params.chunk_size)) {
-            throw ksnp::protocol_exception(ksnp_error_code::KSNP_PROT_E_BAD_JSON_VAL);
-        }
-
-        this->stream_params_reply = params;
-        return &this->stream_params_reply.value();
-    }
-
-    template<typename QosExpectedValue,
-             typename TargetType = decltype(std::declval<QosExpectedValue>().range.min),
-             TargetType (*ParseObj)(json_object const *)>
-    [[nodiscard]] auto register_qos_list(json_object const *obj) -> QosExpectedValue
-    {
-        auto count = json_object_array_length(obj);
-        if (count == 0) {
-            throw ksnp::protocol_exception(ksnp_error_code::KSNP_PROT_E_BAD_JSON_VAL, "empty QoS expected array");
-        }
-
-        std::vector<TargetType> qos_list;
-        qos_list.reserve(count);
-        for (size_t i = 0; i < count; i++) {
-            auto *entry = json_object_array_get_idx(obj, i);
-            qos_list.push_back(ParseObj(entry));
-        }
-
-        this->registered_qos_lists.push_back(std::move(qos_list));
-        auto &reg_list = get<decltype(qos_list)>(this->registered_qos_lists.back());
-
-        return {
-            .type = ksnp_qos_type::KSNP_QOS_LIST, .list = {.values = reg_list.data(), .count = reg_list.size()}
-        };
-    }
-
-    template<typename QosExpectedValue,
-             typename TargetType = decltype(std::declval<QosExpectedValue>().range.min),
-             TargetType (*ParseObj)(json_object const *)>
-    [[nodiscard]] auto json_to_qos(json_object const *obj) -> QosExpectedValue
-    {
-        switch (json_object_get_type(obj)) {
-        case json_type_null:
-            return {.type = ksnp_qos_type::KSNP_QOS_NULL, .none = 0};
-        case json_type_object:
-            return json_to_qos_range<QosExpectedValue, ParseObj>(obj);
-        case json_type_array:
-            return this->register_qos_list<QosExpectedValue, TargetType, ParseObj>(obj);
-        case json_type_boolean:
-        case json_type_double:
-        case json_type_int:
-        case json_type_string:
-        default:
-            throw ksnp::protocol_exception(ksnp_error_code::KSNP_PROT_E_BAD_JSON_TYPE);
-        }
-    }
-
-    [[nodiscard]] auto json_to_qos_u16(json_object const *obj) -> ksnp_qos_u16
-    {
-        return json_to_qos<ksnp_qos_u16, uint16_t, json_to_u16>(obj);
-    }
-
-    [[nodiscard]] auto json_to_qos_u32(json_object const *obj) -> ksnp_qos_u32
-    {
-        return json_to_qos<ksnp_qos_u32, uint32_t, json_to_u32>(obj);
-    }
-
-    [[nodiscard]] auto json_to_qos_rate(json_object const *obj) -> ksnp_qos_rate
-    {
-        return json_to_qos<ksnp_qos_rate, struct ksnp_rate, json_to_rate>(obj);
-    }
-
-    [[nodiscard]] auto json_to_stream_qos_params(json_object *json) -> ksnp_stream_qos_params const *
-    {
-        struct ksnp_stream_qos_params params{
-            .chunk_size     = {.type = ksnp_qos_type::KSNP_QOS_NONE, .none = 0},
-            .min_bps        = {.type = ksnp_qos_type::KSNP_QOS_NONE, .none = 0},
-            .ttl            = {.type = ksnp_qos_type::KSNP_QOS_NONE, .none = 0},
-            .provision_size = {.type = ksnp_qos_type::KSNP_QOS_NONE, .none = 0},
-            .extensions     = nullptr,
-        };
-
-        auto end_iter = json_object_iter_end(json);
-        for (auto it = json_object_iter_begin(json); json_object_iter_equal(&it, &end_iter) == 0;
-             json_object_iter_next(&it)) {
-            std::string_view name  = json_object_iter_peek_name(&it);
-            auto            *value = json_object_iter_peek_value(&it);
-
-            if (name == json_key_chunk_size) {
-                params.chunk_size = json_to_qos_u16(value);
-            } else if (name == json_key_min_bps) {
-                params.min_bps = json_to_qos_rate(value);
-            } else if (name == json_key_ttl) {
-                params.ttl = json_to_qos_u32(value);
-            } else if (name == json_key_provision_size) {
-                params.provision_size = json_to_qos_u32(value);
-            } else if (name == json_key_extensions) {
-                params.extensions = value;
-            } else {
-                throw ksnp::protocol_exception(ksnp_error_code::KSNP_PROT_E_BAD_JSON_KEY);
-            }
-        }
-
-        // Check constraints for chunk size, everything else is enforced by
-        // type limits.
-        switch (params.chunk_size.type) {
-        case ksnp_qos_type::KSNP_QOS_RANGE:
-            if (params.chunk_size.range.max > KSNP_MAX_CHUNK_SIZE) {
-                throw ksnp::protocol_exception(ksnp_error_code::KSNP_PROT_E_BAD_JSON_VAL);
-            }
-            break;
-        case ksnp_qos_type::KSNP_QOS_LIST: {
-#ifdef __clang__
-#pragma clang unsafe_buffer_usage begin
-#endif
-            auto values = std::span{params.chunk_size.list.values, params.chunk_size.list.count};
-#ifdef __clang__
-#pragma clang unsafe_buffer_usage end
-#endif
-            for (auto val: values) {
-                if (val > KSNP_MAX_CHUNK_SIZE) {
-                    throw ksnp::protocol_exception(ksnp_error_code::KSNP_PROT_E_BAD_JSON_VAL);
-                }
-            }
-            break;
-        }
-        case ksnp_qos_type::KSNP_QOS_NONE:
-        case ksnp_qos_type::KSNP_QOS_NULL:
-        default:
-            break;
-        }
-
-        this->stream_params_qos = params;
-        return &this->stream_params_qos.value();
-    }
-
 public:
     ksnp_message_context()
         : input_storage(vector_buffer())
@@ -1113,7 +1280,8 @@ public:
         }
     }
 
-    void parse_message(uint16_t type, std::span<uint8_t const> data)
+    void parse_message(uint16_t                 type,  // NOLINT(readability-function-cognitive-complexity)
+                       std::span<uint8_t const> data)
     {
         // Partially initialize a message
         ksnp_message msg = {.type = static_cast<ksnp_message_type>(type), .error = {.code = {}}};
@@ -1135,12 +1303,13 @@ public:
             }
             break;
         case ksnp_message_type::KSNP_MSG_OPEN_STREAM: {
-            auto *json_params = load_next_json(data, data.size());
-            if (json_params == nullptr) {
+            auto json_params = load_next_json(data, data.size());
+            if (!json_params) {
                 throw ksnp::protocol_exception(ksnp_error_code::KSNP_PROT_E_JSON_MISSING);
             }
-            msg.open_stream = ::ksnp_msg_open_stream{
-                .parameters = json_to_stream_params(json_params),
+            this->last_message_payload = json_to_stream_params(*json_params);
+            msg.open_stream            = ::ksnp_msg_open_stream{
+                           .parameters = std::get<stream_open_params>(this->last_message_payload).get_params(),
             };
             break;
         }
@@ -1150,16 +1319,22 @@ public:
                 .parameters = {.qos = nullptr},
                 .message    = nullptr,
             };
-            auto  json_len    = load_next_u16(data);
-            auto *json_params = load_next_json(data, json_len);
+            auto json_len    = load_next_u16(data);
+            auto json_params = load_next_json(data, json_len);
             if (msg.open_stream_reply.code == ksnp_status_code::KSNP_STATUS_SUCCESS) {
-                if (json_params == nullptr) {
+                if (!json_params) {
                     throw ksnp::protocol_exception(ksnp_error_code::KSNP_PROT_E_JSON_MISSING);
                 }
-                msg.open_stream_reply.parameters.reply = json_to_stream_reply_params(json_params);
+                this->last_message_payload = json_to_stream_reply_params(*json_params);
+                msg.open_stream_reply.parameters.reply =
+                    std::get<stream_accepted_params>(this->last_message_payload).get_params();
             } else {
-                msg.open_stream_reply.parameters.qos =
-                    json_params != nullptr ? json_to_stream_qos_params(json_params) : nullptr;
+                if (json_params) {
+                    this->last_message_payload = json_to_stream_qos_params(*json_params);
+                    msg.open_stream_reply.parameters.qos =
+                        std::get<stream_qos_params>(this->last_message_payload).get_params();
+                }
+
                 // Message is only allowed if code != 0. If there is message
                 // data after the JSON parameter for code == 0, we will throw
                 // an unexpected data exception.
@@ -1231,10 +1406,14 @@ public:
             }
             struct ksnp_data key_data = {.data = data.data(), .len = data_len};
             data                      = data.subspan(data_len);
-            auto *json_params         = load_next_json(data, data.size());
-            msg.key_data_notify       = ksnp_msg_key_data_notify{
-                      .key_data   = key_data,
-                      .parameters = json_params,
+            auto payload              = load_next_json(data, data.size());
+            if (payload && json_object_get_type(*payload) != json_type_object) {
+                throw ksnp::protocol_exception(ksnp_error_code::KSNP_PROT_E_BAD_JSON_TYPE);
+            }
+            this->last_message_payload = key_data_parameters(std::move(payload));
+            msg.key_data_notify        = ksnp_msg_key_data_notify{
+                       .key_data   = key_data,
+                       .parameters = std::get<key_data_parameters>(this->last_message_payload).get_parameters(),
             };
             break;
         }
