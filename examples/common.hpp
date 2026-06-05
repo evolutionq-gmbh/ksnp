@@ -94,9 +94,9 @@ public:
     {
         if (!this->formatted_message) {
             std::stringstream strs;
-            strs << loc.file_name() << ':' << loc.line();
+            strs << loc.file_name() << ':' << loc.line() << ": ";
             if (this->message != nullptr) {
-                strs << ' ' << this->message;
+                strs << this->message << ' ';
             }
             strs << fmt_error(this->err);
 
