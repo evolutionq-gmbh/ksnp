@@ -1,8 +1,8 @@
 Changelog
 =========
 
-Current
--------
+Version 0.4.0
+-------------
 
 * Fix a bug in hostname lookup for the stream example.
 * Have the server ensure it only sends exact chunk-sized key data.
