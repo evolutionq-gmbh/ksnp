@@ -20,6 +20,9 @@ template<typename T>
 auto compare_eq(T left, T right) -> bool
 {
     if constexpr (std::is_pointer_v<std::remove_reference_t<std::decay_t<T>>>) {
+        if (left == nullptr || right == nullptr) {
+            return left == right;
+        }
         return compare_eq(*left, *right);
     }
     return left == right;
@@ -206,9 +209,9 @@ auto inline operator==(ksnp_msg_open_stream_reply const &left, ksnp_msg_open_str
 
     bool param_eq;
     if (left.code == ksnp_status_code::KSNP_STATUS_SUCCESS) {
-        param_eq = compare_eq(*left.parameters.reply, *right.parameters.reply);
+        param_eq = compare_eq(left.parameters.reply, right.parameters.reply);
     } else {
-        param_eq = compare_eq(*left.parameters.qos, *right.parameters.qos);
+        param_eq = compare_eq(left.parameters.qos, right.parameters.qos);
     }
     return param_eq && compare_eq(left.message, right.message);
 }
@@ -405,7 +408,8 @@ inline auto operator<<(std::ostream &os, ksnp_key_stream_id const &ksid) -> std:
 
 inline auto operator<<(std::ostream &os, ksnp_address const &addr) -> std::ostream &
 {
-    return os << "{" << addr.sae << sep << addr.network << "}";
+    return os << "{" << (addr.sae != nullptr ? addr.sae : "") << sep << (addr.network != nullptr ? addr.network : "")
+              << "}";
 }
 
 inline auto operator<<(std::ostream &os, ksnp_rate const &rate) -> std::ostream &
