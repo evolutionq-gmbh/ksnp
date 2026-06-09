@@ -300,67 +300,90 @@ template<std::unsigned_integral TargetUint>
     return json_to_uint<uint32_t>(obj);
 }
 
-template<typename... string_views>
-[[nodiscard]] constexpr auto key_allowed(std::string_view key, string_views... allowed_keys) noexcept -> bool
-{
-    return ((key == allowed_keys) || ...);
-}
+struct json_field {
+private:
+    zstring_view             name;
+    std::optional<json_type> field_type;
+    json_object             *obj;
 
-template<typename... string_views>
-void check_subobject_allowed_keys(json_object const *obj, string_views... allowed_keys)
+    template<size_t N>
+    friend void read_object_fields(json_object const *obj, std::array<json_field, N> &fields);
+
+public:
+    constexpr explicit json_field(zstring_view const &name, std::optional<json_type> field_type = std::nullopt)
+        : name(name)
+        , field_type(field_type)
+        , obj(nullptr)
+    {}
+
+    explicit operator bool() const noexcept
+    {
+        return this->obj != nullptr;
+    }
+
+    auto operator*() const -> json_object *
+    {
+        return this->obj;
+    }
+};
+
+template<size_t N>
+void read_object_fields(json_object const *obj, std::array<json_field, N> &fields)
 {
     if (json_object_get_type(obj) != json_type_object) {
         throw ksnp::protocol_exception(ksnp_error_code::KSNP_PROT_E_BAD_JSON_TYPE);
     }
     auto end_iter = json_object_iter_end(obj);
     // Unfortunately, json-c does not currently provide an API for const
-    // iterators. Since we're only peeking at keys here, and do not
-    // modify anything, we const_cast the object to preserve const
-    // correctness of the calling function tree.
+    // iterators. Since we're only peeking at keys here, and do not modify
+    // anything, we const_cast the object to preserve const correctness of the
+    // calling function tree.
     for (auto it = json_object_iter_begin(const_cast<json_object *>(obj)); json_object_iter_equal(&it, &end_iter) == 0;
          json_object_iter_next(&it)) {
-        if (!key_allowed(json_object_iter_peek_name(&it), allowed_keys...)) {
+        if (auto field = std::ranges::find_if(fields,
+                                              [&it](json_field const &field) -> bool {
+                                                  return field.name == json_object_iter_peek_name(&it);
+                                              });
+            field != fields.end()) {
+            field->obj = json_object_iter_peek_value(&it);
+            if (field->field_type && json_object_is_type(field->obj, *field->field_type) == 0) {
+                throw ksnp::protocol_exception(ksnp_error_code::KSNP_PROT_E_BAD_JSON_TYPE);
+            }
+        } else {
             throw ksnp::protocol_exception(ksnp_error_code::KSNP_PROT_E_BAD_JSON_KEY);
         }
     }
 }
 
-[[nodiscard]] auto get_subobject_string(json_object const *obj, zstring_view key) -> json_ptr
+[[nodiscard]] auto json_to_address(json_object *obj) -> stream_address
 {
-    json_object *subobj = nullptr;
-    if (json_object_object_get_ex(obj, key.c_str(), &subobj) == 1 && json_object_get_type(subobj) != json_type_string) {
-        throw ksnp::protocol_exception(ksnp_error_code::KSNP_PROT_E_BAD_JSON_TYPE);
-    }
-    // If obj has no entry for the given key, subobj will still be nullptr
-    // here.
-    return json_ptr(subobj != nullptr ? json_object_get(subobj) : nullptr);
-}
+    std::array fields = {
+        json_field(json_key_address_sae, json_type_string),
+        json_field(json_key_address_network, json_type_string),
+    };
+    read_object_fields(obj, fields);
 
-[[nodiscard]] auto json_to_address(json_object const *obj) -> stream_address
-{
-    // First check the type of the subobject, and whether it contains
-    // unknown keys.
-    check_subobject_allowed_keys(obj, json_key_address_sae, json_key_address_network);
-
-    // Extract address strings.
-    return {get_subobject_string(obj, json_key_address_sae), get_subobject_string(obj, json_key_address_network)};
+    return {json_ptr(json_object_get(*fields[0])), json_ptr(json_object_get(*fields[1]))};
 }
 
 [[nodiscard]] auto json_to_rate(json_object const *obj) -> ksnp_rate
 {
     // First check the type of the subobject, and whether it contains
     // unknown keys.
-    check_subobject_allowed_keys(obj, json_key_rate_bits, json_key_rate_seconds);
+    std::array fields = {
+        json_field(json_key_rate_bits, json_type_int),
+        json_field(json_key_rate_seconds, json_type_int),
+    };
+    read_object_fields(obj, fields);
 
     // The seconds member is optional. The bits member is required.
-    ksnp_rate    rate = {.bits = 0, .seconds = 0};
-    json_object *subobj;
-    if (json_object_object_get_ex(obj, json_key_rate_bits.c_str(), &subobj) != 1) {
+    ksnp_rate rate = {.bits = 0, .seconds = 0};
+    if (!fields[0]) {
         throw ksnp::protocol_exception(ksnp_error_code::KSNP_PROT_E_JSON_KEY_MISSING);
     }
-    rate.bits = json_to_u32(subobj);
-    if (json_object_object_get_ex(obj, json_key_rate_seconds.c_str(), &subobj) == 1) {
-        rate.seconds = json_to_u32(subobj);
+    rate.bits = json_to_u32(*fields[0]);
+    if (fields[1]) {
+        rate.seconds = json_to_u32(*fields[1]);
         if (rate.seconds == 0) {
             throw ksnp::protocol_exception(ksnp_error_code::KSNP_PROT_E_BAD_JSON_VAL);
         }
@@ -563,21 +586,20 @@ template<>
 template<typename T>
 [[nodiscard]] auto json_to_qos_range(json_object const *obj) -> std::tuple<T, T>
 {
-    // First check the type of the subobject, and whether it contains
-    // unknown keys.
-    check_subobject_allowed_keys(obj, json_key_qos_range_min, json_key_qos_range_max);
+    std::array fields = {
+        json_field(json_key_qos_range_min),
+        json_field(json_key_qos_range_max),
+    };
+    read_object_fields(obj, fields);
 
     // Get the min and max subobjects and parse them using the given
     // callback.
-    json_object *min_obj;
-    json_object *max_obj;
-    if (!json_object_object_get_ex(obj, json_key_qos_range_min.c_str(), &min_obj)
-        || !json_object_object_get_ex(obj, json_key_qos_range_max.c_str(), &max_obj)) {
+    if (!fields[0] || !fields[1]) {
         throw ksnp::protocol_exception(ksnp_error_code::KSNP_PROT_E_JSON_KEY_MISSING);
     }
 
-    auto min_val = json_to_qos_value<T>(min_obj);
-    auto max_val = json_to_qos_value<T>(max_obj);
+    auto min_val = json_to_qos_value<T>(*fields[0]);
+    auto max_val = json_to_qos_value<T>(*fields[1]);
 
     if (min_val > max_val) {
         throw ksnp::protocol_exception(ksnp_error_code::KSNP_PROT_E_BAD_JSON_VAL);
