@@ -1,12 +1,42 @@
 #include <cstdint>
 #include <optional>
 #include <span>
+#include <variant>
 
-#include "helpers.hpp"
 #include "ksnp/client.h"
+#include "ksnp/messages.h"
 #include "serde.hpp"
 
-struct ksnp_client {
+namespace ksnp
+{
+
+class client_event
+    : public std::variant<ksnp_client_event_handshake,
+                          ksnp_client_event_stream_open,
+                          ksnp_client_event_stream_close,
+                          ksnp_client_event_stream_suspend,
+                          ksnp_client_event_key_data,
+                          ksnp_client_event_keep_alive,
+                          ksnp_client_event_error>
+{
+public:
+    using base = std::variant<ksnp_client_event_handshake,
+                              ksnp_client_event_stream_open,
+                              ksnp_client_event_stream_close,
+                              ksnp_client_event_stream_suspend,
+                              ksnp_client_event_key_data,
+                              ksnp_client_event_keep_alive,
+                              ksnp_client_event_error>;
+    using base::base;
+    using base::operator=;
+
+    static auto from_event(ksnp_client_event event) -> std::optional<client_event>;
+
+    [[nodiscard]] auto into_event() const noexcept -> ksnp_client_event;
+};
+
+class client
+{
 private:
     enum class stream_state : uint8_t {
         closed,
@@ -26,15 +56,15 @@ private:
     uint16_t                             chunk_size;
 
 public:
-    explicit ksnp_client(ksnp::message_context &connection);
+    explicit client(ksnp::message_context &connection);
 
-    ~ksnp_client() = default;
+    ~client() = default;
 
-    ksnp_client(ksnp_client const &) = delete;
-    ksnp_client(ksnp_client &&)      = delete;
+    client(client const &) = delete;
+    client(client &&)      = delete;
 
-    auto operator=(ksnp_client const &) -> ksnp_client & = delete;
-    auto operator=(ksnp_client &&) -> ksnp_client &      = delete;
+    auto operator=(client const &) -> client & = delete;
+    auto operator=(client &&) -> client &      = delete;
 
     [[nodiscard]] auto want_read() const noexcept -> bool;
 
@@ -67,7 +97,7 @@ private:
      * @param msg Message that was received that should be acted upon.
      * @return Resulting event, if any.
      */
-    [[nodiscard]] auto process_message(ksnp::message const &msg) -> std::optional<ksnp::client_event>;
+    [[nodiscard]] auto process_message(ksnp::message const &msg) -> std::optional<client_event>;
 
     /**
      * @brief Add a message to send to the connected server.
@@ -87,3 +117,5 @@ private:
      */
     auto on_error(ksnp_error_code err) -> ksnp::client_event;
 };
+
+}  // namespace ksnp

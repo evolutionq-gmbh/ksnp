@@ -6,13 +6,11 @@
 #include <optional>
 #include <span>
 #include <string>
-#include <utility>
 #include <variant>
 #include <vector>
 
-#include <json-c/json_object.h>
-
 #include "helpers.hpp"
+#include "ksnp/messages.h"
 #include "ksnp/serde.h"
 
 namespace ksnp
@@ -41,7 +39,7 @@ public:
         return this->buf->data(this->buf);
     }
 
-    [[nodiscard]] auto size() const noexcept -> std::size_t
+    [[nodiscard]] auto size() const noexcept -> size_type
     {
         return this->buf->size(this->buf);
     }
@@ -74,9 +72,9 @@ public:
         }
     }
 
-    void truncate(size_t count) noexcept
+    void truncate(size_t size) noexcept
     {
-        this->buf->truncate(this->buf, count);
+        this->buf->truncate(this->buf, size);
     }
 
 #ifdef __clang__
@@ -104,6 +102,91 @@ public:
 #ifdef __clang__
 #pragma clang unsafe_buffer_usage end
 #endif
+};
+
+/// @brief Buffer using std::vector as a basis.
+class vector_buffer
+    : protected ksnp_buffer
+    , public std::vector<unsigned char>
+{
+public:
+    vector_buffer()
+        : ksnp_buffer{
+              .data      = data_fn,
+              .size      = size_fn,
+              .consume   = consume_fn,
+              .append    = append_fn,
+              .truncate  = truncate_fn,
+              .user_data = this,
+          }
+    {}
+
+    vector_buffer(vector_buffer const &)     = default;
+    vector_buffer(vector_buffer &&) noexcept = default;
+
+    ~vector_buffer() = default;
+
+    auto operator=(vector_buffer const &) -> vector_buffer &     = default;
+    auto operator=(vector_buffer &&) noexcept -> vector_buffer & = default;
+
+    using vector::data;
+    using vector::size;
+
+    static auto from_buffer_ptr(ksnp_buffer const *base_buffer) -> vector_buffer const *
+    {
+        return static_cast<vector_buffer const *>(base_buffer->user_data);
+    }
+
+    static auto from_buffer_ptr(ksnp_buffer *base_buffer) -> vector_buffer *
+    {
+        return static_cast<vector_buffer *>(base_buffer->user_data);
+    }
+
+    auto as_buffer_ptr() -> ksnp_buffer *
+    {
+        return this;
+    }
+
+private:
+    static auto data_fn(struct ksnp_buffer *buffer) noexcept -> unsigned char *
+
+    {
+        return static_cast<vector_buffer *>(buffer)->data();
+    }
+
+    static auto size_fn(struct ksnp_buffer *buffer) noexcept -> size_t
+    {
+        return static_cast<vector_buffer *>(buffer)->size();
+    }
+
+    static void consume_fn(struct ksnp_buffer *buffer, size_t count) noexcept
+    {
+        auto *self = static_cast<vector_buffer *>(buffer);
+        self->erase(self->begin(), self->begin() + static_cast<std::vector<unsigned char>::difference_type>(count));
+    }
+
+    static auto append_fn(struct ksnp_buffer  *buffer,
+                          unsigned char const *data,
+                          size_t              *len) noexcept  // NOLINT(readability-non-const-parameter)
+        -> ksnp_error
+    try {
+        auto *self = static_cast<vector_buffer *>(buffer);
+#ifdef __clang__
+#pragma clang unsafe_buffer_usage begin
+#endif
+        self->insert(self->end(), data, data + *len);
+#ifdef __clang__
+#pragma clang unsafe_buffer_usage end
+#endif
+        return ksnp_error::KSNP_E_NO_ERROR;
+    } catch (std::bad_alloc const &) {
+        return ksnp_error::KSNP_E_NO_MEM;
+    }
+
+    static void truncate_fn(struct ksnp_buffer *buffer, size_t size) noexcept
+    {
+        static_cast<vector_buffer *>(buffer)->resize(size);
+    }
 };
 
 using json_ptr = unique_obj<json_object *, json_object_put>;
@@ -261,7 +344,47 @@ template<std::unsigned_integral SourceUint, typename U8 = unsigned char>
     return result;
 }
 
-struct message_context {
+class message
+    : public std::variant<ksnp_msg_version,
+                          ksnp_msg_open_stream,
+                          ksnp_msg_open_stream_reply,
+                          ksnp_msg_close_stream,
+                          ksnp_msg_close_stream_notify,
+                          ksnp_msg_close_stream_reply,
+                          ksnp_msg_suspend_stream,
+                          ksnp_msg_suspend_stream_notify,
+                          ksnp_msg_suspend_stream_reply,
+                          ksnp_msg_capacity_notify,
+                          ksnp_msg_key_data_notify,
+                          ksnp_msg_keep_alive_stream,
+                          ksnp_msg_keep_alive_stream_reply,
+                          ksnp_msg_error>
+{
+public:
+    using base = std::variant<ksnp_msg_version,
+                              ksnp_msg_open_stream,
+                              ksnp_msg_open_stream_reply,
+                              ksnp_msg_close_stream,
+                              ksnp_msg_close_stream_notify,
+                              ksnp_msg_close_stream_reply,
+                              ksnp_msg_suspend_stream,
+                              ksnp_msg_suspend_stream_notify,
+                              ksnp_msg_suspend_stream_reply,
+                              ksnp_msg_capacity_notify,
+                              ksnp_msg_key_data_notify,
+                              ksnp_msg_keep_alive_stream,
+                              ksnp_msg_keep_alive_stream_reply,
+                              ksnp_msg_error>;
+    using base::base;
+    using base::operator=;
+
+    static auto from_message(ksnp_message msg) -> std::optional<message>;
+
+    [[nodiscard]] auto into_message() const noexcept -> ksnp_message;
+};
+
+class message_context
+{
 private:
     using message_payload = std::
         variant<std::monostate, stream_open_params, stream_accepted_params, stream_qos_params, key_data_parameters>;
@@ -348,8 +471,6 @@ public:
 
     auto next_message() -> std::optional<message>;
 
-    auto parse_message(std::uint16_t type, std::span<unsigned char const> data) -> message;
-
     void write_message(struct ksnp_message const *message);
 
     void write_message(message const &message)
@@ -357,6 +478,9 @@ public:
         auto raw_message = message.into_message();
         this->write_message(&raw_message);
     }
+
+private:
+    auto parse_message(std::uint16_t type, std::span<unsigned char const> data) -> message;
 };
 
 }  // namespace ksnp

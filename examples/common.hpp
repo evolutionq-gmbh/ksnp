@@ -23,12 +23,14 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
-#include "helpers.hpp"
+#include "client.hpp"
 #include "ksnp/client.h"
 #include "ksnp/messages.h"
 #include "ksnp/serde.h"
 #include "ksnp/server.h"
 #include "ksnp/types.h"
+#include "serde.hpp"
+#include "server.hpp"
 
 /// @brief Size of key chunks used by the examples.
 static uint16_t const CHUNK_SIZE = 32;

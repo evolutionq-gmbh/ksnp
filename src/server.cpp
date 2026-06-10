@@ -94,9 +94,7 @@ auto server_event::from_event(ksnp_server_event event) -> std::optional<server_e
     }
 }
 
-}  // namespace ksnp
-
-ksnp_server::ksnp_server(ksnp::message_context &connection)
+server::server(ksnp::message_context &connection)
     : connection(&connection)
     , current_stream(nullptr)
     , client_capacity(0)
@@ -108,7 +106,7 @@ ksnp_server::ksnp_server(ksnp::message_context &connection)
                                           .maximum_version = ksnp_protocol_version::PROTOCOL_V1});
 }
 
-auto ksnp_server::want_read() const noexcept -> bool
+auto server::want_read() const noexcept -> bool
 {
     if (this->stream_state == stream_state::error) {
         return false;
@@ -116,7 +114,7 @@ auto ksnp_server::want_read() const noexcept -> bool
     return this->connection->want_read();
 }
 
-auto ksnp_server::read_data(std::span<uint8_t const> data) -> size_t
+auto server::read_data(std::span<uint8_t const> data) -> size_t
 {
     if (data.empty()) {
         this->close_connection(ksnp_close_direction::KSNP_CLOSE_READ);
@@ -126,7 +124,7 @@ auto ksnp_server::read_data(std::span<uint8_t const> data) -> size_t
     return this->connection->read_data(data);
 }
 
-auto ksnp_server::want_write() const noexcept -> bool
+auto server::want_write() const noexcept -> bool
 {
     return (this->connection->want_write()
             || (this->current_stream && this->client_capacity >= this->current_stream->chunk_size
@@ -134,7 +132,7 @@ auto ksnp_server::want_write() const noexcept -> bool
         || this->give_eof;
 }
 
-void ksnp_server::flush_data()
+void server::flush_data()
 {
     if (!this->connection->want_write() && this->current_stream
         && this->client_capacity >= this->current_stream->chunk_size
@@ -169,14 +167,14 @@ void ksnp_server::flush_data()
     }
 }
 
-auto ksnp_server::write_data(std::span<uint8_t> data) -> size_t
+auto server::write_data(std::span<uint8_t> data) -> size_t
 {
     this->flush_data();
 
     return this->connection->write_data(data);
 }
 
-auto ksnp_server::next_event() -> std::optional<server_event>
+auto server::next_event() -> std::optional<server_event>
 {
     if (this->stream_state == stream_state::error) {
         return std::nullopt;
@@ -212,7 +210,7 @@ auto ksnp_server::next_event() -> std::optional<server_event>
     }
 }
 
-auto ksnp_server::process_message(message const &msg) -> std::optional<server_event>
+auto server::process_message(message const &msg) -> std::optional<server_event>
 {
     if (this->stream_state == stream_state::error) {
         return std::nullopt;
@@ -335,7 +333,7 @@ auto ksnp_server::process_message(message const &msg) -> std::optional<server_ev
     return std::visit(msg_visitor, msg);
 }
 
-void ksnp_server::open_stream_ok(ksnp_stream *stream, struct ksnp_stream_accepted_params const *params)
+void server::open_stream_ok(ksnp_stream *stream, struct ksnp_stream_accepted_params const *params)
 {
     if (this->current_stream || this->current_action != action::opening) {
         throw ksnp::exception(ksnp_error::KSNP_E_INVALID_OPERATION);
@@ -353,9 +351,7 @@ void ksnp_server::open_stream_ok(ksnp_stream *stream, struct ksnp_stream_accepte
     this->current_stream = stream;
 }
 
-void ksnp_server::open_stream_fail(ksnp_status_code                     reason,
-                                   struct ksnp_stream_qos_params const *params,
-                                   char const                          *message)
+void server::open_stream_fail(ksnp_status_code reason, struct ksnp_stream_qos_params const *params, char const *message)
 {
     if (this->current_stream || this->current_action != action::opening) {
         throw ksnp::exception(ksnp_error::KSNP_E_INVALID_OPERATION);
@@ -373,7 +369,7 @@ void ksnp_server::open_stream_fail(ksnp_status_code                     reason,
     this->current_action  = std::nullopt;
 }
 
-auto ksnp_server::close_stream() -> ksnp_stream *
+auto server::close_stream() -> ksnp_stream *
 {
     if (!(this->stream_state == stream_state::open  // NOLINT: readability-simplify-boolean-expr
           || (this->stream_state == stream_state::closing && this->current_stream))
@@ -389,7 +385,7 @@ auto ksnp_server::close_stream() -> ksnp_stream *
     return this->current_stream.release();
 }
 
-auto ksnp_server::suspend_stream_ok(uint32_t timeout) -> ksnp_stream *
+auto server::suspend_stream_ok(uint32_t timeout) -> ksnp_stream *
 {
     if (this->stream_state != stream_state::open
         || (this->current_action && this->current_action != action::suspending)) {
@@ -414,7 +410,7 @@ auto ksnp_server::suspend_stream_ok(uint32_t timeout) -> ksnp_stream *
     return this->current_stream.release();
 }
 
-void ksnp_server::suspend_stream_fail(ksnp_status_code reason, char const *message)
+void server::suspend_stream_fail(ksnp_status_code reason, char const *message)
 {
     if (this->stream_state != stream_state::open || this->current_action != action::suspending) {
         throw ksnp::exception(ksnp_error::KSNP_E_INVALID_OPERATION);
@@ -431,7 +427,7 @@ void ksnp_server::suspend_stream_fail(ksnp_status_code reason, char const *messa
     this->current_action = std::nullopt;
 }
 
-void ksnp_server::keep_alive_ok()
+void server::keep_alive_ok()
 {
     if (this->current_action != action::keep_alive) {
         throw ksnp::exception(ksnp_error::KSNP_E_INVALID_OPERATION);
@@ -444,7 +440,7 @@ void ksnp_server::keep_alive_ok()
     this->current_action = std::nullopt;
 }
 
-void ksnp_server::keep_alive_fail(ksnp_status_code reason, char const *message)
+void server::keep_alive_fail(ksnp_status_code reason, char const *message)
 {
     if (this->current_action != action::keep_alive) {
         throw ksnp::exception(ksnp_error::KSNP_E_INVALID_OPERATION);
@@ -460,7 +456,7 @@ void ksnp_server::keep_alive_fail(ksnp_status_code reason, char const *message)
     this->current_action = std::nullopt;
 }
 
-void ksnp_server::close_connection(ksnp_close_direction dir)
+void server::close_connection(ksnp_close_direction dir)
 {
     bool close_read  = dir == ksnp_close_direction::KSNP_CLOSE_READ || dir == ksnp_close_direction::KSNP_CLOSE_BOTH;
     bool close_write = dir == ksnp_close_direction::KSNP_CLOSE_WRITE || dir == ksnp_close_direction::KSNP_CLOSE_BOTH;
@@ -486,7 +482,7 @@ void ksnp_server::close_connection(ksnp_close_direction dir)
     }
 }
 
-void ksnp_server::push_message(message const msg)
+void server::push_message(message const msg)
 {
     if (this->in_shutdown) {
         return;
@@ -494,7 +490,7 @@ void ksnp_server::push_message(message const msg)
     this->connection->write_message(msg);
 }
 
-auto ksnp_server::on_error(ksnp_error_code err) -> server_event
+auto server::on_error(ksnp_error_code err) -> server_event
 {
     if (this->stream_state != stream_state::error) {
         this->push_message(ksnp_msg_error{.code = err});
@@ -506,6 +502,8 @@ auto ksnp_server::on_error(ksnp_error_code err) -> server_event
         .stream      = this->current_stream.release(),
     };
 }
+
+}  // namespace ksnp
 
 auto ksnp_simple_stream_create(ksnp_stream **stream_ptr, uint16_t chunk_size) noexcept -> ksnp_error
 try {
@@ -533,6 +531,12 @@ try {
     return ksnp_error::KSNP_E_NO_ERROR;
 }
 CATCH_ALL
+
+// Wrapper for the C++ class into a C struct. Note that this is not POD, but the
+// type is opaque to the API.
+struct ksnp_server : ksnp::server {
+    using ksnp::server::server;
+};
 
 auto ksnp_server_create(struct ksnp_server **server, ksnp_message_context *ctx) noexcept -> ksnp_error
 try {

@@ -1,12 +1,16 @@
 #include <cstdint>
 #include <optional>
 #include <span>
+#include <variant>
 #include <vector>
 
 #include "helpers.hpp"
 #include "ksnp/server.h"
 #include "ksnp/types.h"
 #include "serde.hpp"
+
+namespace ksnp
+{
 
 struct simple_stream : protected ksnp_stream {
 private:
@@ -102,7 +106,33 @@ private:
     }
 };
 
-struct ksnp_server {
+class server_event
+    : public std::variant<ksnp_server_event_handshake,
+                          ksnp_server_event_open_stream,
+                          ksnp_server_event_close_stream,
+                          ksnp_server_event_suspend_stream,
+                          ksnp_server_event_keep_alive,
+                          ksnp_server_event_new_capacity,
+                          ksnp_server_event_error>
+{
+public:
+    using base = std::variant<ksnp_server_event_handshake,
+                              ksnp_server_event_open_stream,
+                              ksnp_server_event_close_stream,
+                              ksnp_server_event_suspend_stream,
+                              ksnp_server_event_keep_alive,
+                              ksnp_server_event_new_capacity,
+                              ksnp_server_event_error>;
+    using base::base;
+    using base::operator=;
+
+    static auto from_event(ksnp_server_event event) -> std::optional<server_event>;
+
+    [[nodiscard]] auto into_event() const noexcept -> ksnp_server_event;
+};
+
+class server
+{
 private:
     enum class stream_state : uint8_t {
         closed,
@@ -143,14 +173,14 @@ public:
      *
      * @param connection Client connection.
      */
-    explicit ksnp_server(ksnp::message_context &connection);
-    ~ksnp_server() = default;
+    explicit server(ksnp::message_context &connection);
+    ~server() = default;
 
-    ksnp_server(ksnp_server const &) = delete;
-    ksnp_server(ksnp_server &&)      = delete;
+    server(server const &) = delete;
+    server(server &&)      = delete;
 
-    auto operator=(ksnp_server const &) -> ksnp_server & = delete;
-    auto operator=(ksnp_server &&) -> ksnp_server &      = delete;
+    auto operator=(server const &) -> server & = delete;
+    auto operator=(server &&) -> server &      = delete;
 
     [[nodiscard]] auto get_stream() const noexcept -> ksnp_stream *
     {
@@ -204,3 +234,5 @@ private:
      */
     auto on_error(ksnp_error_code err) -> ksnp::server_event;
 };
+
+}  // namespace ksnp

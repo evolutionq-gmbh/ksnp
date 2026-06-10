@@ -16,8 +16,6 @@ using namespace ksnp;
 
 static size_t const BUFFER_SIZE = 1024;
 
-using json_obj = unique_obj<json_object *, json_object_put>;
-
 BOOST_AUTO_TEST_SUITE(test_message_context)
 
 BOOST_AUTO_TEST_CASE(test_message_context_basics)
@@ -172,7 +170,7 @@ namespace
 
 ksnp::zstring_view const test_string = "abcdefghijkl"_zsv;
 
-json_obj const test_extension{[]() noexcept -> struct json_object * {  // NOLINT cert-err58-cpp
+json_ptr const test_extension{[]() noexcept -> struct json_object * {  // NOLINT cert-err58-cpp
     static constexpr int magic_val = 42;
     auto                *obj       = json_object_new_object();
     json_object_object_add(obj, "myval", json_object_new_int(magic_val));

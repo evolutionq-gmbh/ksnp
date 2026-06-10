@@ -90,9 +90,7 @@ auto client_event::from_event(ksnp_client_event event) -> std::optional<client_e
     }
 }
 
-}  // namespace ksnp
-
-ksnp_client::ksnp_client(ksnp::message_context &connection)
+client::client(ksnp::message_context &connection)
     : connection(&connection)
     , stream_state(stream_state::closed)
     , in_shutdown(false)
@@ -104,7 +102,7 @@ ksnp_client::ksnp_client(ksnp::message_context &connection)
                                           .maximum_version = ksnp_protocol_version::PROTOCOL_V1});
 }
 
-auto ksnp_client::want_read() const noexcept -> bool
+auto client::want_read() const noexcept -> bool
 {
     if (this->stream_state == stream_state::error) {
         return false;
@@ -112,7 +110,7 @@ auto ksnp_client::want_read() const noexcept -> bool
     return this->connection->want_read();
 }
 
-auto ksnp_client::read_data(std::span<uint8_t const> data) -> size_t
+auto client::read_data(std::span<uint8_t const> data) -> size_t
 {
     if (data.empty()) {
         this->close_connection(ksnp_close_direction::KSNP_CLOSE_READ);
@@ -122,12 +120,12 @@ auto ksnp_client::read_data(std::span<uint8_t const> data) -> size_t
     return this->connection->read_data(data);
 }
 
-auto ksnp_client::want_write() const noexcept -> bool
+auto client::want_write() const noexcept -> bool
 {
     return this->connection->want_write() || this->give_eof;
 }
 
-void ksnp_client::flush_data()
+void client::flush_data()
 {
     if (!this->connection->want_write() && this->give_eof) {
         // If no data needs to be written by the context and give_eof is true,
@@ -137,13 +135,13 @@ void ksnp_client::flush_data()
     }
 }
 
-auto ksnp_client::write_data(std::span<uint8_t> data) -> size_t
+auto client::write_data(std::span<uint8_t> data) -> size_t
 {
     this->flush_data();
     return this->connection->write_data(data);
 }
 
-auto ksnp_client::next_event() -> std::optional<client_event>
+auto client::next_event() -> std::optional<client_event>
 {
     if (this->stream_state == stream_state::error) {
         return std::nullopt;
@@ -169,7 +167,7 @@ auto ksnp_client::next_event() -> std::optional<client_event>
     }
 }
 
-auto ksnp_client::process_message(message const &msg)  // NOLINT(readability-function-cognitive-complexity)
+auto client::process_message(message const &msg)  // NOLINT(readability-function-cognitive-complexity)
     -> std::optional<client_event>
 {
     if (this->stream_state == stream_state::error) {
@@ -337,7 +335,7 @@ auto ksnp_client::process_message(message const &msg)  // NOLINT(readability-fun
     return std::visit(msg_visitor, msg);
 }
 
-void ksnp_client::push_message(message const msg)
+void client::push_message(message const msg)
 {
     if (this->in_shutdown) {
         return;
@@ -345,7 +343,7 @@ void ksnp_client::push_message(message const msg)
     this->connection->write_message(msg);
 }
 
-auto ksnp_client::on_error(ksnp_error_code err) -> client_event
+auto client::on_error(ksnp_error_code err) -> client_event
 {
     if (this->stream_state != stream_state::error) {
         this->push_message(ksnp_msg_error{.code = err});
@@ -354,7 +352,7 @@ auto ksnp_client::on_error(ksnp_error_code err) -> client_event
     return ksnp_client_event_error{.code = err, .description = nullptr};
 }
 
-void ksnp_client::open_stream(ksnp_stream_open_params const *parameters)
+void client::open_stream(ksnp_stream_open_params const *parameters)
 {
     if (this->stream_state != stream_state::closed) {
         throw ksnp::exception(ksnp_error::KSNP_E_INVALID_OPERATION);
@@ -365,7 +363,7 @@ void ksnp_client::open_stream(ksnp_stream_open_params const *parameters)
     this->push_message(::ksnp_msg_open_stream{.parameters = parameters});
 }
 
-void ksnp_client::close_stream()
+void client::close_stream()
 {
     if (this->stream_state != stream_state::open) {
         throw ksnp::exception(ksnp_error::KSNP_E_INVALID_OPERATION);
@@ -374,7 +372,7 @@ void ksnp_client::close_stream()
     this->push_message(::ksnp_msg_close_stream{});
 }
 
-void ksnp_client::suspend_stream(uint32_t timeout)
+void client::suspend_stream(uint32_t timeout)
 {
     if (this->stream_state != stream_state::open) {
         throw ksnp::exception(ksnp_error::KSNP_E_INVALID_OPERATION);
@@ -383,7 +381,7 @@ void ksnp_client::suspend_stream(uint32_t timeout)
     this->push_message(::ksnp_msg_suspend_stream{.timeout = timeout});
 }
 
-void ksnp_client::add_capacity(uint32_t additional_capacity)
+void client::add_capacity(uint32_t additional_capacity)
 {
     if (this->stream_state != stream_state::open) {
         throw ksnp::exception(ksnp_error::KSNP_E_INVALID_OPERATION);
@@ -395,14 +393,14 @@ void ksnp_client::add_capacity(uint32_t additional_capacity)
     this->push_message(::ksnp_msg_capacity_notify{.additional_capacity = additional_capacity});
 }
 
-void ksnp_client::keep_alive(uuid_t const &stream_id)
+void client::keep_alive(uuid_t const &stream_id)
 {
     auto msg = ::ksnp_msg_keep_alive_stream{};
     std::ranges::copy(stream_id, std::begin(msg.key_stream_id));
     this->push_message(msg);
 }
 
-void ksnp_client::close_connection(ksnp_close_direction dir)
+void client::close_connection(ksnp_close_direction dir)
 {
     bool close_read  = dir == ksnp_close_direction::KSNP_CLOSE_READ || dir == ksnp_close_direction::KSNP_CLOSE_BOTH;
     bool close_write = dir == ksnp_close_direction::KSNP_CLOSE_WRITE || dir == ksnp_close_direction::KSNP_CLOSE_BOTH;
@@ -422,6 +420,14 @@ void ksnp_client::close_connection(ksnp_close_direction dir)
         this->give_eof    = true;
     }
 }
+
+}  // namespace ksnp
+
+// Wrapper for the C++ class into a C struct. Note that this is not POD, but the
+// type is opaque to the API.
+struct ksnp_client : ksnp::client {
+    using ksnp::client::client;
+};
 
 auto ksnp_client_create(struct ksnp_client **client, ksnp_message_context *ctx) noexcept -> ksnp_error
 try {

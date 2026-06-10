@@ -3,18 +3,8 @@
 #include <algorithm>
 #include <concepts>
 #include <exception>
-#include <new>
-#include <optional>
 #include <string_view>
-#include <variant>
-#include <vector>
 
-#include <json-c/json_object.h>
-
-#include "ksnp/client.h"
-#include "ksnp/messages.h"
-#include "ksnp/serde.h"
-#include "ksnp/server.h"
 #include "ksnp/types.h"
 
 namespace ksnp
@@ -254,91 +244,6 @@ public:
     }
 };
 
-/// @brief Buffer using std::vector as a basis.
-class vector_buffer
-    : protected ksnp_buffer
-    , public std::vector<unsigned char>
-{
-public:
-    vector_buffer()
-        : ksnp_buffer{
-              .data      = data_fn,
-              .size      = size_fn,
-              .consume   = consume_fn,
-              .append    = append_fn,
-              .truncate  = truncate_fn,
-              .user_data = this,
-          }
-    {}
-
-    vector_buffer(vector_buffer const &)     = default;
-    vector_buffer(vector_buffer &&) noexcept = default;
-
-    ~vector_buffer() = default;
-
-    auto operator=(vector_buffer const &) -> vector_buffer &     = default;
-    auto operator=(vector_buffer &&) noexcept -> vector_buffer & = default;
-
-    using vector::data;
-    using vector::size;
-
-    static auto from_buffer_ptr(ksnp_buffer const *base_buffer) -> vector_buffer const *
-    {
-        return static_cast<vector_buffer const *>(base_buffer->user_data);
-    }
-
-    static auto from_buffer_ptr(ksnp_buffer *base_buffer) -> vector_buffer *
-    {
-        return static_cast<vector_buffer *>(base_buffer->user_data);
-    }
-
-    auto as_buffer_ptr() -> ksnp_buffer *
-    {
-        return this;
-    }
-
-private:
-    static auto data_fn(struct ksnp_buffer *buffer) noexcept -> unsigned char *
-
-    {
-        return static_cast<vector_buffer *>(buffer)->data();
-    }
-
-    static auto size_fn(struct ksnp_buffer *buffer) noexcept -> size_t
-    {
-        return static_cast<vector_buffer *>(buffer)->size();
-    }
-
-    static void consume_fn(struct ksnp_buffer *buffer, size_t count) noexcept
-    {
-        auto *self = static_cast<vector_buffer *>(buffer);
-        self->erase(self->begin(), self->begin() + static_cast<std::vector<unsigned char>::difference_type>(count));
-    }
-
-    static auto append_fn(struct ksnp_buffer  *buffer,
-                          unsigned char const *data,
-                          size_t              *len) noexcept  // NOLINT(readability-non-const-parameter)
-        -> ksnp_error
-    try {
-        auto *self = static_cast<vector_buffer *>(buffer);
-#ifdef __clang__
-#pragma clang unsafe_buffer_usage begin
-#endif
-        self->insert(self->end(), data, data + *len);
-#ifdef __clang__
-#pragma clang unsafe_buffer_usage end
-#endif
-        return ksnp_error::KSNP_E_NO_ERROR;
-    } catch (std::bad_alloc const &) {
-        return ksnp_error::KSNP_E_NO_MEM;
-    }
-
-    static void truncate_fn(struct ksnp_buffer *buffer, size_t size) noexcept
-    {
-        static_cast<vector_buffer *>(buffer)->resize(size);
-    }
-};
-
 class zstring_view : public std::string_view
 {
 public:
@@ -357,95 +262,6 @@ constexpr auto operator""_zsv(char const *str, size_t len) noexcept -> zstring_v
         std::string_view{str, len}
     };
 }
-
-class server_event
-    : public std::variant<ksnp_server_event_handshake,
-                          ksnp_server_event_open_stream,
-                          ksnp_server_event_close_stream,
-                          ksnp_server_event_suspend_stream,
-                          ksnp_server_event_keep_alive,
-                          ksnp_server_event_new_capacity,
-                          ksnp_server_event_error>
-{
-public:
-    using base = std::variant<ksnp_server_event_handshake,
-                              ksnp_server_event_open_stream,
-                              ksnp_server_event_close_stream,
-                              ksnp_server_event_suspend_stream,
-                              ksnp_server_event_keep_alive,
-                              ksnp_server_event_new_capacity,
-                              ksnp_server_event_error>;
-    using base::base;
-    using base::operator=;
-
-    static auto from_event(ksnp_server_event event) -> std::optional<server_event>;
-
-    [[nodiscard]] auto into_event() const noexcept -> ksnp_server_event;
-};
-
-class client_event
-    : public std::variant<ksnp_client_event_handshake,
-                          ksnp_client_event_stream_open,
-                          ksnp_client_event_stream_close,
-                          ksnp_client_event_stream_suspend,
-                          ksnp_client_event_key_data,
-                          ksnp_client_event_keep_alive,
-                          ksnp_client_event_error>
-{
-public:
-    using base = std::variant<ksnp_client_event_handshake,
-                              ksnp_client_event_stream_open,
-                              ksnp_client_event_stream_close,
-                              ksnp_client_event_stream_suspend,
-                              ksnp_client_event_key_data,
-                              ksnp_client_event_keep_alive,
-                              ksnp_client_event_error>;
-    using base::base;
-    using base::operator=;
-
-    static auto from_event(ksnp_client_event event) -> std::optional<client_event>;
-
-    [[nodiscard]] auto into_event() const noexcept -> ksnp_client_event;
-};
-
-class message
-    : public std::variant<ksnp_msg_version,
-                          ksnp_msg_open_stream,
-                          ksnp_msg_open_stream_reply,
-                          ksnp_msg_close_stream,
-                          ksnp_msg_close_stream_notify,
-                          ksnp_msg_close_stream_reply,
-                          ksnp_msg_suspend_stream,
-                          ksnp_msg_suspend_stream_notify,
-                          ksnp_msg_suspend_stream_reply,
-                          ksnp_msg_capacity_notify,
-                          ksnp_msg_key_data_notify,
-                          ksnp_msg_keep_alive_stream,
-                          ksnp_msg_keep_alive_stream_reply,
-                          ksnp_msg_error>
-{
-public:
-    using base = std::variant<ksnp_msg_version,
-                              ksnp_msg_open_stream,
-                              ksnp_msg_open_stream_reply,
-                              ksnp_msg_close_stream,
-                              ksnp_msg_close_stream_notify,
-                              ksnp_msg_close_stream_reply,
-                              ksnp_msg_suspend_stream,
-                              ksnp_msg_suspend_stream_notify,
-                              ksnp_msg_suspend_stream_reply,
-                              ksnp_msg_capacity_notify,
-                              ksnp_msg_key_data_notify,
-                              ksnp_msg_keep_alive_stream,
-                              ksnp_msg_keep_alive_stream_reply,
-                              ksnp_msg_error>;
-    using base::base;
-    using base::operator=;
-
-    static auto from_message(ksnp_message msg) -> std::optional<message>;
-
-    [[nodiscard]] auto into_message() const noexcept -> ksnp_message;
-};
 
 // helper type for the visitor
 template<class... Ts>
