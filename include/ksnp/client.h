@@ -208,17 +208,18 @@ struct ksnp_client_event {
  * A client can be created using @ref ksnp_client_create(). To use it, data must
  * be read and written using @ref ksnp_client_read_data() and @ref
  * ksnp_client_write_data(), which respectively read received server data and
- * write data to send to the server.
+ * write data to send to the server. If a message context is used with external
+ * buffers, data may be directly read from and written to those.
  *
  * After receiving data from the server, @ref ksnp_client_next_event() should be
  * called as soon as possible to process the message data and handle the
  * corresponding events.
  *
  * To check if the client requires more data from the server, or has data to
- * send to the server, the @ref ksnp_client_want_read() and @ref ksnp_client_want_write()
- * functions can be used. If either of these returns true, the
- * @ref ksnp_client_read_data() and @ref ksnp_client_write_data() functions
- * should be called as appropriate.
+ * send to the server, the @ref ksnp_client_want_read() and @ref
+ * ksnp_client_want_write() functions can be used. If either of these returns
+ * true, the @ref ksnp_client_read_data() and @ref ksnp_client_write_data()
+ * functions should be called as appropriate.
  *
  * This type cannot be used concurrently across threads, but can be shared
  * between threads.
@@ -251,17 +252,18 @@ void ksnp_client_destroy(struct ksnp_client *client) NOEXCEPT;
 /**
  * @brief Check if the client is ready to receive more data.
  *
- * This function can be used to determine of the client does not have any data
- * available to process, and more input data is required, to be provided via
- * @ref ksnp_client_read_data(). This will always returns false once EOF has
- * been indicating using @ref ksnp_client_read_data().
+ * This function can be used to determine whether more data is expected from the
+ * server. If so, the client does not have any data available to process, and
+ * more input data is to be provided via @ref ksnp_client_read_data(). This will
+ * always returns false once EOF has been indicated using @ref
+ * ksnp_client_close_connection().
  *
  * @param client The client to check.
  * @return true if no complete message is available for processing, and
  * @ref ksnp_client_read_data() should be called as soon as more data is
  * available.
- * @return false if some message data is available and @ref ksnp_client_next_event()
- * should be called as soon as possible.
+ * @return false if some message data is available and @ref
+ * ksnp_client_next_event() should be called as soon as possible.
  */
 bool ksnp_client_want_read(struct ksnp_client const *client) NOEXCEPT;
 
@@ -295,11 +297,10 @@ NODISCARD ksnp_error ksnp_client_read_data(struct ksnp_client *client, uint8_t c
 /**
  * @brief Check if the client has data available to write.
  *
- * This function can be used to determine of the client has any data available
- * to send to the server, which can be read using @ref ksnp_client_write_data()
- * or be made available using @ref ksnp_client_flush_data(). Data normally
- * becomes available during the initial handshake, after processing input data,
- * or after performing some stream operation.
+ * This function can be used to determine whether the client has any data
+ * available to send to the server, which can be retrieved using @ref
+ * ksnp_client_write_data() or be made available using @ref
+ * ksnp_client_flush_data().
  *
  * This function also returns true if previously the connection was closed in
  * the write direction, and no data needs to be sent to the client. In that case
@@ -324,7 +325,7 @@ bool ksnp_client_want_write(struct ksnp_client const *client) NOEXCEPT;
  * This is necessary when using a message context with custom buffers.
  *
  * If @ref ksnp_client_want_write() has returned true, but no data is in the
- * buffer after calling this function, the outgoing connection can be closed.
+ * buffer after calling this function, the outgoing connection should be closed.
  *
  * @param client The client to flush pending data for.
  * @return @ref KSNP_E_NO_ERROR on success.
@@ -333,14 +334,14 @@ bool ksnp_client_want_write(struct ksnp_client const *client) NOEXCEPT;
 NODISCARD ksnp_error ksnp_client_flush_data(struct ksnp_client *client) NOEXCEPT;
 
 /**
- * @brief Receive data from the client to send to the server.
+ * @brief Retrieve data from the client to send to the server.
  *
- * This function can be used to receive the data from the client that needs to
+ * This function can be used to retrieve the data from the client that needs to
  * be sent to the server. This is normally called when calling
  * @ref ksnp_client_want_write() returns true. The client buffers this data
- * until it is extracted. To prevent this buffer from growing unduly (or filling
+ * until it is retrieved. To prevent this buffer from growing unduly (or filling
  * up entirely), the @ref ksnp_client_want_write() function should be used to
- * determine when it is appropriate to send further data.
+ * determine when it is appropriate to retrieve further data.
  *
  * @param client The client to read data from.
  * @param data [out] Pointer to a buffer to write data to.
@@ -357,7 +358,7 @@ NODISCARD ksnp_error ksnp_client_write_data(struct ksnp_client *client, uint8_t 
 /**
  * @brief Process received data.
  *
- * This function will processed the received data, reading all incoming messages
+ * This function will process the received data, reading all incoming messages
  * until either no further messages can be processed, or an event has occurred
  * that needs to be responded to.
  *
@@ -395,7 +396,7 @@ NODISCARD ksnp_error ksnp_client_next_event(struct ksnp_client *client, struct k
  * occurs, which contains the result of the request.
  *
  * @param client The client that requests to open a key stream.
- * @param parameters Parameters for the key stream.
+ * @param parameters Pointer to the parameters for the key stream.
  * @return @ref KSNP_E_NO_ERROR on success.
  * @return Any of the values from the @ref ksnp_error enum on failure. No open
  * request is sent in this case.
@@ -480,7 +481,7 @@ NODISCARD ksnp_error ksnp_client_keep_alive(struct ksnp_client *client, ksnp_key
  * The read direction must be closed as soon as the server indicates it has
  * closed the connection. If the read direction is closed, no further message
  * data will be accepted. The write direction should be closed when either the
- * server has closed the connection and ksnp_client_next_event() returns no
+ * server has closed the connection and @ref ksnp_client_next_event() returns no
  * event, or when the client itself is stopping.
  *
  * If the write direction is closed, any ongoing event is cancelled. The client

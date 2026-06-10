@@ -158,8 +158,9 @@ ksnp_error ksnp_message_context_create(struct ksnp_message_context **context) NO
  * @param read_buffer Pointer to a buffer object that is used for reading data.
  * Note that data returned by the created message context may refer to data in
  * the read buffer. Premature modification of that buffer may invalidate this
- * data.
+ * data. The pointer must remain valid for the lifetime of the message context.
  * @param write_buffer Pointer to a buffer object that is used for writing data.
+ * The pointer must remain valid for the lifetime of the message context.
  * @return @ref KSNP_E_NO_ERROR on success.
  * @return Any of the values from the @ref ksnp_error enum on failure.
  */
@@ -181,24 +182,29 @@ void ksnp_message_context_destroy(struct ksnp_message_context *context) NOEXCEPT
  * Calling @ref ksnp_message_context_read_data() only if this function returns
  * true ensures the least amount of data needs to be buffered.
  *
+ * If this function returns false, either a message is pending which can be
+ * extracted with @ref ksnp_message_context_next_message(), or EOF was reached
+ * after previously calling @ref ksnp_message_context_read_data() with an empty
+ * buffer.
+ *
  * @param ctx The message context used to deserialize the message data.
  * @return true if no message is currently available for reading.
- * @return false if some message data is available for reading.
+ * @return false if some message data is available for reading, or EOF was
+ * reached.
  */
 bool ksnp_message_context_want_read(struct ksnp_message_context *ctx) NOEXCEPT;
 
 /**
  * @brief Read data from a buffer and check for additional messages.
  *
- * This function can be used to provide the message context with further data
- * received. The context buffers this data until it is ready to be deserialized
- * into a message. To prevent this buffer from growing unduly (or filling up
- * entirely), the @ref ksnp_message_context_want_read() function should be used
- * to determine when it is appropriate to add more data.
+ * This function can be used to provide the message context with further data.
+ * The context buffers this data until it is ready to be deserialized into a
+ * message. To prevent this buffer from growing unduly (or filling up entirely),
+ * the @ref ksnp_message_context_want_read() function should be used to
+ * determine when it is appropriate to add more data.
  *
  * After calling this function, @ref ksnp_message_context_next_message() should
- * be called as soon as possible, or when @ref ksnp_message_context_want_read()
- * returns false.
+ * be called as soon as possible.
  *
  * To indicate the receiving channel from the server has been closed, i.e., EOF
  * was reached, the @p len parameter can be set to the value 0.
@@ -222,7 +228,7 @@ NODISCARD ksnp_error ksnp_message_context_read_data(struct ksnp_message_context 
 /**
  * @brief Check if the context has data available to write.
  *
- * This function can be used to determine of the context has any data available
+ * This function can be used to determine if the context has any data available
  * to write, which can be read using @ref ksnp_message_context_write_data().
  * Data normally becomes available after a call to @ref
  * ksnp_message_context_write_message().

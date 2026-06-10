@@ -880,7 +880,7 @@ auto message_context::load_next_json(std::span<uint8_t const> &data, size_t json
     // data when it goes out of scope. If the function is successful, store
     // this object in the message context to extend the lifetime of all
     // pointers into the JSON data.
-    json_obj raii_obj(obj);
+    json_obj raii_obj(obj, true);
 
     // After the parsed JSON object, only whitespace is allowed within the
     // JSON field of the message (as defined by `json_len`).

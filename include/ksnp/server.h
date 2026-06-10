@@ -260,17 +260,18 @@ NODISCARD ksnp_error ksnp_simple_stream_add_key_data(struct ksnp_stream *stream,
  * A server can be created using @ref ksnp_server_create(). To use it, data must
  * be read and written using @ref ksnp_server_read_data() and @ref
  * ksnp_server_write_data(), which respectively read received client data and
- * write data to send to the client.
+ * write data to send to the client. If a message context is used with external
+ * buffers, data may be directly read from and written to those.
  *
  * After receiving data from the client, @ref ksnp_server_next_event() should be
  * called as soon as possible to process the message data and handle the
  * corresponding events.
  *
  * To check if the server requires more data from the client, or has data to
- * send to the client, the @ref ksnp_server_want_read() and @ref ksnp_server_want_write()
- * functions can be used. If either of these returns true, the
- * @ref ksnp_server_read_data() and @ref ksnp_server_write_data() functions
- * should be called as appropriate.
+ * send to the client, the @ref ksnp_server_want_read() and @ref
+ * ksnp_server_want_write() functions can be used. If either of these returns
+ * true, the @ref ksnp_server_read_data() and @ref ksnp_server_write_data()
+ * functions should be called as appropriate.
  *
  * This type cannot be used concurrently across threads, but can be shared
  * between threads.
@@ -303,10 +304,11 @@ void ksnp_server_destroy(struct ksnp_server *server) NOEXCEPT;
 /**
  * @brief Check if the server is ready to receive more data.
  *
- * This function can be used to determine of the server does not have any data
- * available to process, and more input data is required, to be provided via
- * @ref ksnp_server_read_data(). This will always returns false once EOF has
- * been indicating using @ref ksnp_server_read_data().
+ * This function can be used to determine whether more data is expected from the
+ * client. If so, the server does not have any data available to process, and
+ * more input data is to be provided via @ref ksnp_server_read_data(). This will
+ * always returns false once EOF has been indicated using @ref
+ * ksnp_server_close_connection().
  *
  * @param server The server to check.
  * @return true if no complete message is available for processing, and
@@ -347,11 +349,12 @@ NODISCARD ksnp_error ksnp_server_read_data(struct ksnp_server *server, uint8_t c
 /**
  * @brief Check if the server has data available to write.
  *
- * This function can be used to determine of the server has any data available
- * to send to the client, which can be read using @ref ksnp_server_write_data()
- * or be made available using @ref ksnp_client_flush_data(). Data normally
- * becomes available during the initial handshake, after processing input data,
- * or after performing some stream operation.
+ * This function can be used to determine whether the server has any data
+ * available to send to the client, which can be retrieved using @ref
+ * ksnp_server_write_data() or be made available using @ref
+ * ksnp_client_flush_data(). Data normally becomes available during the initial
+ * handshake, after processing input data, or after performing some stream
+ * operation.
  *
  * This function also returns true if previously the connection was closed in
  * the write direction, and no data needs to be sent to the client. In that case
@@ -385,14 +388,14 @@ bool ksnp_server_want_write(struct ksnp_server const *server) NOEXCEPT;
 NODISCARD ksnp_error ksnp_server_flush_data(struct ksnp_server *server) NOEXCEPT;
 
 /**
- * @brief Receive data from the server to send to the client.
+ * @brief Retrieve data from the server to send to the client.
  *
- * This function can be used to receive the data from the server that needs to
+ * This function can be used to retrieve the data from the server that needs to
  * be sent to the client. This is normally called when calling
  * @ref ksnp_server_want_write() returns true. The server buffers this data
- * until it is extracted. To prevent this buffer from growing unduly (or filling
+ * until it is retrieved. To prevent this buffer from growing unduly (or filling
  * up entirely), the @ref ksnp_server_want_write() function should be used to
- * determine when it is appropriate to send further data.
+ * determine when it is appropriate to retrieve further data.
  *
  * @param server The server to read data from.
  * @param data [out] Pointer to a buffer to write data to.
@@ -409,7 +412,7 @@ NODISCARD ksnp_error ksnp_server_write_data(struct ksnp_server *server, uint8_t 
 /**
  * @brief Process received data.
  *
- * This function will processed the received data, reading all incoming messages
+ * This function will process the received data, reading all incoming messages
  * until either no further messages can be processed, or an event has occurred
  * that needs to be responded to.
  *
@@ -499,7 +502,6 @@ NODISCARD ksnp_error ksnp_server_open_stream_fail(struct ksnp_server            
  *
  * @param server Server that closes its stream.
  * @param stream [out] Pointer to receive the pointer to the associated stream.
- * This pointer takes ownership of the stream.
  * @return @ref KSNP_E_NO_ERROR on success.
  * @return Any of the values from the @ref ksnp_error enum on failure. A
  * previously associated stream is destroyed.
@@ -513,13 +515,12 @@ NODISCARD ksnp_error ksnp_server_close_stream(struct ksnp_server *server, struct
  * @ref ksnp_server_event_suspend_stream event, or some other external event.
  *
  * @param server Server that suspends its stream.
- * @param timeout Time in seconds the stream will remain suspended for as long
- * the the client does not attempt to interact with it.
+ * @param timeout Time in seconds the stream will remain suspended for, as long
+ * as the client does not attempt to interact with it.
  * @param stream [out] Pointer to receive the pointer to the associated stream.
- * This pointer takes ownership of the stream.
  * @return @ref KSNP_E_NO_ERROR on success.
- * @return Any of the values from the @ref ksnp_error enum on failure. A previously
- * associated stream remains associated.
+ * @return Any of the values from the @ref ksnp_error enum on failure. A
+ * previously associated stream remains associated.
  */
 NODISCARD ksnp_error ksnp_server_suspend_stream_ok(struct ksnp_server  *server,
                                                    uint32_t             timeout,
