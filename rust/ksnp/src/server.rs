@@ -276,7 +276,7 @@ impl<T: StreamImpl> Stream<T> {
 
     extern "C" fn next_chunk(
         stream: *mut sys::ksnp_stream,
-        data: *mut sys::ksnp_data,
+        data: *mut sys::ksnp_cdata,
         max_count: u16,
     ) -> ksnp_error {
         // SAFETY: The stream parameter points to an instance of Self::base,

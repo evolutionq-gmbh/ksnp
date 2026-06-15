@@ -121,6 +121,19 @@ auto inline operator==(ksnp_rate const &left, ksnp_rate const &right)
     return std::tie(left.bits, left.seconds) == std::tie(right.bits, right.seconds);
 }
 
+auto inline operator==(ksnp_cdata const &left, ksnp_cdata const &right)
+{
+#ifdef __clang__
+#pragma clang unsafe_buffer_usage begin
+#endif
+    auto left_data  = std::span{left.data, left.len};
+    auto right_data = std::span{right.data, right.len};
+#ifdef __clang__
+#pragma clang unsafe_buffer_usage end
+#endif
+    return std::ranges::equal(left_data, right_data);
+}
+
 auto inline operator==(ksnp_data const &left, ksnp_data const &right)
 {
 #ifdef __clang__
@@ -421,6 +434,21 @@ inline auto operator<<(std::ostream &os, ksnp_rate const &rate) -> std::ostream 
 inline auto operator<<(std::ostream &os, json_object const *obj) -> std::ostream &
 {
     return os << (obj != nullptr ? "{...}" : "null");
+}
+
+inline auto operator<<(std::ostream &os, ksnp_cdata const &data) -> std::ostream &
+{
+#ifdef __clang__
+#pragma clang unsafe_buffer_usage begin
+#endif
+    auto buffer = std::span{data.data, data.len};
+#ifdef __clang__
+#pragma clang unsafe_buffer_usage end
+#endif
+    for (auto const &byte: buffer) {
+        os << std::format("{:02x}", byte);
+    }
+    return os;
 }
 
 inline auto operator<<(std::ostream &os, ksnp_data const &data) -> std::ostream &

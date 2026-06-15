@@ -35,25 +35,16 @@ struct ksnp_message;
  * complete message as specified by the @a KSNP_MAX_MSG_LEN constant.
  */
 struct ksnp_buffer {
-    /// @brief Pointer to a function that returns the pointer to the start of
-    /// the buffer.
+    /// @brief Pointer to a function that retrieves a view of the buffer's
+    /// contents.
     ///
-    /// The size of the buffer can be determined using the @a size member. The
-    /// pointer may be NULL for an empty buffer.
+    /// The view may point to NULL for an empty buffer.
     ///
-    /// @param buffer The buffer to get the data pointer of.
-    /// @return Pointer to the buffer's data, may be NULL if the buffer is
-    /// empty.
-    unsigned char *(*data)(struct ksnp_buffer *buffer)NOEXCEPT;
-
-    /// @brief Pointer to a function that returns the size of the buffer.
-    ///
-    /// This corresponds to the number of bytes available in the buffer pointed
-    /// to by the @a data function.
-    ///
-    /// @param buffer The buffer to get the size of.
-    /// @return The size of the buffer in bytes.
-    size_t (*size)(struct ksnp_buffer *buffer) NOEXCEPT;
+    /// @param buffer The buffer to access the contents from.
+    /// @param data [out] Pointer to the data structure that gives a view to the
+    /// contents of the buffer. If the buffer is empty, the data pointer may be
+    /// NULL.
+    void (*contents)(struct ksnp_buffer *buffer, struct ksnp_data *data) NOEXCEPT;
 
     /// @brief Pointer to a function that consumes the first @p count bytes from
     /// the buffer.

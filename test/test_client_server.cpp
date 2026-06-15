@@ -358,7 +358,7 @@ BOOST_AUTO_TEST_CASE(test_connection_client_chunk_size)
     BOOST_CHECK(conn.server().want_write());
     conn.complete_io();
     auto key_event = ::ksnp_client_event_key_data{
-        .key_data = ksnp_data{.data = key_source.data(), .len = CHUNK_SIZE},
+        .key_data = ksnp_cdata{.data = key_source.data(), .len = CHUNK_SIZE},
           .parameters = nullptr
     };
     BOOST_CHECK(conn.client().next_event() == ksnp::client_event{key_event});
@@ -380,7 +380,7 @@ BOOST_AUTO_TEST_CASE(test_connection_client_chunk_size)
 
     // Insert non chunk-sized key data into stream, expect protocol error
     ksnp::message chunk_msg(ksnp_msg_key_data_notify{
-        .key_data = ksnp_data{.data = key_source.data(), .len = CHUNK_SIZE + 1},
+        .key_data = ksnp_cdata{.data = key_source.data(), .len = CHUNK_SIZE + 1},
           .parameters = nullptr
     });
     conn.server_message_context().write_message(chunk_msg);

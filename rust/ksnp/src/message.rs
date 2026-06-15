@@ -55,19 +55,6 @@ where
 impl<T: BufferImpl> Buffer<T> {
     const BASE_OFFSET: usize = core::mem::offset_of!(Self, base);
 
-    /// Converts a raw stream pointer to a self reference.
-    ///
-    /// # Safety
-    ///
-    /// The pointer must have been created from the address of Self::base, and
-    /// point into a valid instance of self. Furthermore, the lifetime of the
-    /// resulting reference may not exceed that of the given pointer.
-    unsafe fn buffer_to_self<'a>(buffer: *const sys::ksnp_buffer) -> &'a Self {
-        // SAFETY: The stream parameter points to an instance of Self::base,
-        // so the self pointer is found by subtracting the base offset.
-        unsafe { buffer.byte_sub(Self::BASE_OFFSET).cast::<Self>().as_ref() }.unwrap()
-    }
-
     /// Converts a raw stream pointer to a mutable self reference.
     ///
     /// # Safety
@@ -84,8 +71,7 @@ impl<T: BufferImpl> Buffer<T> {
     pub fn new(this: T) -> Self {
         Self {
             base: sys::ksnp_buffer {
-                data: Some(Self::data),
-                size: Some(Self::size),
+                contents: Some(Self::contents),
                 consume: Some(Self::consume),
                 append: Some(Self::append),
                 truncate: Some(Self::truncate),
@@ -95,19 +81,17 @@ impl<T: BufferImpl> Buffer<T> {
         }
     }
 
-    extern "C" fn data(buffer: *mut sys::ksnp_buffer) -> *mut c_uchar {
+    extern "C" fn contents(buffer: *mut sys::ksnp_buffer, data: *mut sys::ksnp_data) {
         // SAFETY: The buffer parameter points to an instance of Self::base, as
         // only the base's data method can call here.
-        unsafe { Self::buffer_to_self_mut(buffer) }
-            .this
-            .data()
-            .as_mut_ptr()
-    }
-
-    extern "C" fn size(buffer: *mut sys::ksnp_buffer) -> usize {
-        // SAFETY: The buffer parameter points to an instance of Self::base, as
-        // only the base's size method can call here.
-        unsafe { Self::buffer_to_self(buffer) }.this.size()
+        let contents = unsafe { Self::buffer_to_self_mut(buffer) }.this.data();
+        let contents = sys::ksnp_data {
+            data: contents.as_mut_ptr(),
+            len: contents.len(),
+        };
+        // SAFETY: The function requires the data argument to be a valid
+        // writeable pointer.
+        unsafe { data.write(contents) };
     }
 
     extern "C" fn consume(buffer: *mut sys::ksnp_buffer, count: usize) {
@@ -729,7 +713,7 @@ impl Message<'_> {
                 type_: sys::ksnp_message_type::KSNP_MSG_KEY_DATA_NOTIFY,
                 anon_1: sys::ksnp_message__bindgen_ty_1 {
                     key_data_notify: sys::ksnp_msg_key_data_notify {
-                        key_data: sys::ksnp_data {
+                        key_data: sys::ksnp_cdata {
                             data: key_data.as_ptr(),
                             len: key_data.len(),
                         },

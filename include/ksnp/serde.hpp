@@ -41,13 +41,49 @@ public:
     {}
 
     /**
+     * @brief Return the contents of the buffer.
+     *
+     * @return The buffer's contents.
+     */
+    [[nodiscard]] auto contents() const noexcept -> std::span<unsigned char const>
+    {
+        ksnp_data data{};
+        this->buf->contents(this->buf, &data);
+#ifdef __clang__
+#pragma clang unsafe_buffer_usage begin
+#endif
+        return {data.data, data.len};
+#ifdef __clang__
+#pragma clang unsafe_buffer_usage end
+#endif
+    }
+
+    /**
+     * @brief Return the contents of the buffer.
+     *
+     * @return The buffer's contents.
+     */
+    [[nodiscard]] auto contents() noexcept -> std::span<unsigned char>
+    {
+        ksnp_data data{};
+        this->buf->contents(this->buf, &data);
+#ifdef __clang__
+#pragma clang unsafe_buffer_usage begin
+#endif
+        return {data.data, data.len};
+#ifdef __clang__
+#pragma clang unsafe_buffer_usage end
+#endif
+    }
+
+    /**
      * @brief Return a pointer to the data in the buffer.
      *
      * @return Pointer to the buffer's data, which may be null.
      */
     [[nodiscard]] auto data() const noexcept -> unsigned char const *
     {
-        return this->buf->data(this->buf);
+        return this->contents().data();
     }
 
     /**
@@ -57,7 +93,8 @@ public:
      */
     [[nodiscard]] auto data() noexcept -> unsigned char *
     {
-        return this->buf->data(this->buf);
+
+        return this->contents().data();
     }
 
     /**
@@ -67,7 +104,7 @@ public:
      */
     [[nodiscard]] auto size() const noexcept -> size_type
     {
-        return this->buf->size(this->buf);
+        return this->contents().size();
     }
 
     /**
@@ -135,52 +172,6 @@ public:
     {
         this->buf->truncate(this->buf, size);
     }
-
-#ifdef __clang__
-#pragma clang unsafe_buffer_usage begin
-#endif
-    /**
-     * @brief Start iterator for the buffer.
-     *
-     * @return Start iterator for the buffer.
-     */
-    [[nodiscard]] auto begin() -> unsigned char *
-    {
-        return this->data();
-    }
-
-    /**
-     * @brief End iterator for the buffer.
-     *
-     * @return End iterator for the buffer.
-     */
-    [[nodiscard]] auto end() -> unsigned char *
-    {
-        return this->data() + this->size();
-    }
-
-    /**
-     * @brief Start iterator for the buffer.
-     *
-     * @return Start iterator for the buffer.
-     */
-    [[nodiscard]] auto begin() const -> unsigned char const *
-    {
-        return this->data();
-    }
-
-    /**
-     * @brief End iterator for the buffer.
-     *
-     * @return End iterator for the buffer.
-     */
-    [[nodiscard]] auto end() const -> unsigned char const *
-    {
-        return this->data() + this->size();
-    }
-#ifdef __clang__
-#pragma clang unsafe_buffer_usage end
-#endif
 };
 
 /**
@@ -196,8 +187,7 @@ public:
      */
     vector_buffer()
         : ksnp_buffer{
-              .data      = data_fn,
-              .size      = size_fn,
+              .contents  = contents_fn,
               .consume   = consume_fn,
               .append    = append_fn,
               .truncate  = truncate_fn,
@@ -206,16 +196,21 @@ public:
     {}
 
     /** @brief Copy constructor. */
-    vector_buffer(vector_buffer const &)     = default;
+    vector_buffer(vector_buffer const &) = default;
     /** @brief Move constructor. */
-    vector_buffer(vector_buffer &&) noexcept = default;
+    vector_buffer(vector_buffer &&other) noexcept
+        : ksnp_buffer(std::move(other))
+        , std::vector<unsigned char>(std::move(other))
+    {
+        this->user_data = this;
+    }
 
     ~vector_buffer() = default;
 
     /** @brief Copy assignment operator. */
-    auto operator=(vector_buffer const &) -> vector_buffer &     = default;
+    auto operator=(vector_buffer const &) -> vector_buffer &     = delete;
     /** @brief Move assignment operator. */
-    auto operator=(vector_buffer &&) noexcept -> vector_buffer & = default;
+    auto operator=(vector_buffer &&) noexcept -> vector_buffer & = delete;
 
     using vector::data;
     using vector::size;
@@ -258,15 +253,12 @@ public:
     }
 
 private:
-    static auto data_fn(struct ksnp_buffer *buffer) noexcept -> unsigned char *
+    static void contents_fn(struct ksnp_buffer *buffer, ksnp_data *data) noexcept
 
     {
-        return static_cast<vector_buffer *>(buffer)->data();
-    }
-
-    static auto size_fn(struct ksnp_buffer *buffer) noexcept -> size_t
-    {
-        return static_cast<vector_buffer *>(buffer)->size();
+        auto *self = from_buffer_ptr(buffer);
+        data->data = self->data();
+        data->len  = self->size();
     }
 
     static void consume_fn(struct ksnp_buffer *buffer, size_t count) noexcept

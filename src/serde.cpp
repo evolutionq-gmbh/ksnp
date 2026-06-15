@@ -1037,7 +1037,7 @@ try {
     if (this->eof) {
         return false;
     }
-    auto data = std::span{this->input_data};
+    auto data = this->input_data.contents();
 
     if (this->last_message_len.has_value()) {
         data = data.subspan(*this->last_message_len);
@@ -1084,7 +1084,7 @@ auto message_context::read_data(std::span<unsigned char const> data) -> size_t
 
 auto message_context::write_data(std::span<unsigned char> data) -> size_t
 {
-    auto to_copy = std::span(this->output_data);
+    auto to_copy = this->output_data.contents();
     if (to_copy.size() > data.size()) {
         to_copy = to_copy.first(data.size());
     }
@@ -1099,7 +1099,7 @@ auto message_context::next_message() -> std::optional<message>
     // Clear previous message first, if any
     free_last_message();
 
-    auto data = std::span{this->input_data};
+    auto data = this->input_data.contents();
 
     if (data.size() >= KSNP_MSG_HEADER_SIZE) {
         // Header is complete. Parse it.
@@ -1250,9 +1250,9 @@ auto message_context::parse_message(uint16_t                 type,  // NOLINT(re
         if (data.size() < data_len) {
             throw ksnp::protocol_exception(ksnp_error_code::KSNP_PROT_E_BAD_MSG_LENGTH);
         }
-        struct ksnp_data key_data = {.data = data.data(), .len = data_len};
-        data                      = data.subspan(data_len);
-        json_obj payload          = load_next_json(data, data.size());
+        struct ksnp_cdata key_data = {.data = data.data(), .len = data_len};
+        data                       = data.subspan(data_len);
+        json_obj payload           = load_next_json(data, data.size());
         if (payload && json_object_get_type(*payload) != json_type_object) {
             throw ksnp::protocol_exception(ksnp_error_code::KSNP_PROT_E_BAD_JSON_TYPE);
         }
@@ -1394,7 +1394,7 @@ void message_context::write_message(  // NOLINT: readability-function-cognitive-
         // Overwrite the placeholder in the output queue by the message length.
         std::ranges::copy(
             uint_to_be(static_cast<uint16_t>(msg_len)),
-            std::span{this->output_data}.subspan(orig_out_len + sizeof(uint16_t), sizeof(uint16_t)).begin());
+            this->output_data.contents().subspan(orig_out_len + sizeof(uint16_t), sizeof(uint16_t)).begin());
     } catch (...) {
         // Erase data inserted into output queue, if any, then rethrow.
         this->output_data.truncate(orig_out_len);

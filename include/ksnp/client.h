@@ -137,7 +137,7 @@ struct ksnp_client_event_stream_suspend {
  */
 struct ksnp_client_event_key_data {
     /// @brief Buffer for the key data.
-    struct ksnp_data   key_data;
+    struct ksnp_cdata  key_data;
     /// @brief Optional parameters for the key data. If set, these are always
     /// vendor extensions.
     json_object const *parameters;

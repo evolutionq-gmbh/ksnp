@@ -91,7 +91,7 @@ typedef uuid_t ksnp_key_stream_id;
 /**
  * @brief Wrapper for arbitrary byte strings.
  */
-struct ksnp_data {
+struct ksnp_cdata {
     /// @brief Pointer to the data.
     ///
     /// This pointer may be NULL if @a len is 0.
@@ -100,6 +100,20 @@ struct ksnp_data {
     ///
     /// Although uncommon, this may be zero for empty buffers.
     size_t               len;
+};
+
+/**
+ * @brief Wrapper for arbitrary byte strings.
+ */
+struct ksnp_data {
+    /// @brief Pointer to the data.
+    ///
+    /// This pointer may be NULL if @a len is 0.
+    unsigned char *data;
+    /// @brief Length of the byte string.
+    ///
+    /// Although uncommon, this may be zero for empty buffers.
+    size_t         len;
 };
 
 /**

@@ -10,6 +10,10 @@ Current
 * Handle messages similar to events, adding a "none" variant.
 * Add a field for user data to the stream and buffer structures.
 * Make the C++ API public.
+* Cloned ksnp_data to ksnp_cdata, which is its const variant used for key data
+  chunks.
+* Merge the data and size functions of ksnp_buffer to a method that returns
+  ksnp_data.
 
 Version 0.3.1
 -------------

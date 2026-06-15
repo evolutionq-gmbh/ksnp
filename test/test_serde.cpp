@@ -256,11 +256,11 @@ std::array<ksnp::message, 20> const good_messages = {
     ksnp_msg_keep_alive_stream_reply{.code    = ksnp_status_code::KSNP_STATUS_OPERATION_NOT_SUPPORTED,
                    .message = "I'm afraid I can't do that"},
     ksnp_msg_capacity_notify{.additional_capacity = 32},
-    ksnp_msg_key_data_notify{.key_data = ksnp_data{.data = reinterpret_cast<unsigned char const *>(test_string.data()),
-                                                   .len  = test_string.size()},
+    ksnp_msg_key_data_notify{.key_data = ksnp_cdata{.data = reinterpret_cast<unsigned char const *>(test_string.data()),
+                                                    .len  = test_string.size()},
                    .parameters = nullptr},
-    ksnp_msg_key_data_notify{.key_data = ksnp_data{.data = reinterpret_cast<unsigned char const *>(test_string.data()),
-                                                   .len  = test_string.size()},
+    ksnp_msg_key_data_notify{.key_data = ksnp_cdata{.data = reinterpret_cast<unsigned char const *>(test_string.data()),
+                                                    .len  = test_string.size()},
                    .parameters = *test_extension},
 };
 

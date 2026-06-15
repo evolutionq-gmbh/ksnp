@@ -89,7 +89,7 @@ public:
      * chunk is extracted.
      * @return NO_ERROR.
      */
-    auto next_chunk(struct ksnp_data *data, uint16_t max_count) noexcept -> ksnp_error
+    auto next_chunk(struct ksnp_cdata *data, uint16_t max_count) noexcept -> ksnp_error
     {
         if (this->prev_read > 0) {
             this->provisioned_data.erase(this->provisioned_data.begin(),
@@ -157,7 +157,7 @@ private:
     }
 
     [[nodiscard]] static auto
-    next_chunk_fn(ksnp_stream *base_stream, struct ksnp_data *data, uint16_t max_count) noexcept -> ksnp_error
+    next_chunk_fn(ksnp_stream *base_stream, struct ksnp_cdata *data, uint16_t max_count) noexcept -> ksnp_error
     {
         return static_cast<simple_stream *>(base_stream)->next_chunk(data, max_count);
     }

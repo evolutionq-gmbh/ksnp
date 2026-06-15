@@ -139,7 +139,7 @@ void server::flush_data()
 
         auto max_count =
             std::min(static_cast<uint32_t>(max_key_data), this->client_capacity) / this->current_stream->chunk_size;
-        ::ksnp_data chunk_data = {};
+        ksnp_cdata chunk_data = {};
         if (auto res =
                 this->current_stream->next_chunk(*this->current_stream, &chunk_data, static_cast<uint16_t>(max_count));
             res != ksnp_error::KSNP_E_NO_ERROR) {

@@ -240,7 +240,7 @@ struct ksnp_msg_capacity_notify {
  */
 struct ksnp_msg_key_data_notify {
     /// @brief The key data that was transferred.
-    struct ksnp_data    key_data;
+    struct ksnp_cdata   key_data;
     /// @brief Optional parameters associated with the key data.
     struct json_object *parameters;
 };
