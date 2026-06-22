@@ -13,6 +13,9 @@ link-cplusplus = { workspace = true }
 
 [build-dependencies]
 bindgen = { workspace = true }
+prettyplease = { workspace = true }
+quote = { workspace = true }
+syn = { workspace = true }
 cmake = { workspace = true }
 pkg-config = { workspace = true }
 regex = { workspace = true }

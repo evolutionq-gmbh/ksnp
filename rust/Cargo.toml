@@ -1,5 +1,5 @@
 [workspace]
-members = ["ksnp-sys", "ksnp"]
+members = ["ksnp", "ksnp-sys"]
 resolver = "2"
 
 [workspace.package]
@@ -13,7 +13,10 @@ clap = { version = "4.5", default-features = false }
 cmake = { version = "0.1", default-features = false }
 link-cplusplus = { version = "1", default-features = false }
 pkg-config = { version = "0.3", default-features = false }
+prettyplease = { version = "0.2", default-features = false }
+quote = { version = "1.0", default-features = false }
 regex = { version = "1.12", default-features = false }
+syn = { version = "2.0", default-features = false }
 uuid = { version = "1.17", default-features = false }
 
 ksnp-sys = { path = "./ksnp-sys", default-features = false }
