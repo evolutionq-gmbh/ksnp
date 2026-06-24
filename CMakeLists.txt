@@ -70,7 +70,7 @@ target_link_libraries(ksnp PUBLIC LibUUID::LibUUID json-c::json-c)
 target_include_directories(ksnp PUBLIC ${CMAKE_CURRENT_LIST_DIR}/include "${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/include")
 target_include_directories(ksnp PRIVATE ${CMAKE_CURRENT_LIST_DIR}/src)
 target_compile_features(ksnp PUBLIC cxx_std_20)
-target_compile_features(ksnp PUBLIC c_std_23)
+target_compile_features(ksnp PUBLIC c_std_99)
 
 set_target_properties(ksnp PROPERTIES PUBLIC_HEADER "${PUBLIC_HEADERS}")
 
