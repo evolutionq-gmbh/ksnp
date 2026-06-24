@@ -1,6 +1,12 @@
 Changelog
 =========
 
+Version 0.4.1
+-------------
+
+* Make some modifications to support older compilers.
+* Generate a PkgConfig file for KSNP.
+
 Version 0.4.0
 -------------
 
