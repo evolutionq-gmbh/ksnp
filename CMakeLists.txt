@@ -42,6 +42,23 @@ static char const KSNP_VERSION[] = \"${CMAKE_PROJECT_VERSION_MAJOR}.${CMAKE_PROJ
 "
 )
 
+file(GENERATE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/lib/pkgconfig/ksnp.pc" CONTENT
+"\
+prefix=${CMAKE_INSTALL_PREFIX}
+exec_prefix=\${prefix}
+libdir=\${prefix}/${CMAKE_INSTALL_LIBDIR}
+includedir=\${prefix}/${CMAKE_INSTALL_INCLUDEDIR}
+
+Name: ksnp
+Description: KSNP
+Version: ${PROJECT_VERSION}
+
+Requires: json-c uuid
+Cflags: -I\${includedir}
+Libs: -L\${libdir} -lksnp
+"
+)
+
 set(PUBLIC_HEADERS
   include/ksnp/client.h
   include/ksnp/client.hpp
@@ -78,6 +95,9 @@ add_library(KSNP::ksnp ALIAS ksnp)
 
 install(TARGETS ksnp
   PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/ksnp
+)
+install(FILES "${CMAKE_CURRENT_BINARY_DIR}/lib/pkgconfig/ksnp.pc"
+  DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig
 )
 
 if (BUILD_TEST OR BUILD_EXAMPLES)
