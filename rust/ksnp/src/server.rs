@@ -213,6 +213,10 @@ pub struct Stream<T> {
     this: T,
 }
 
+// SAFETY: The sys::ksnp_stream can be moved across threads safely, since the
+// user data pointer is not used.
+unsafe impl<T: Send> Send for Stream<T> {}
+
 impl<T: StreamImpl> Stream<T> {
     const BASE_OFFSET: usize = core::mem::offset_of!(Self, base);
 

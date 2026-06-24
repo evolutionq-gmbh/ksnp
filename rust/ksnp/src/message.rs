@@ -52,6 +52,10 @@ where
     }
 }
 
+// SAFETY: The sys::ksnp_buffer can be moved across threads safely, since the
+// user data pointer is not used.
+unsafe impl<T: Send> Send for Buffer<T> {}
+
 impl<T: BufferImpl> Buffer<T> {
     const BASE_OFFSET: usize = core::mem::offset_of!(Self, base);
 
