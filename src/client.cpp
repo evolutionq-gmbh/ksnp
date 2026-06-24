@@ -62,7 +62,7 @@ auto client_event::into_event() const noexcept -> ksnp_client_event
             };
         },
     };
-    return std::visit(visitor, *this);
+    return std::visit(visitor, static_cast<base const &>(*this));
 }
 
 auto client_event::from_event(ksnp_client_event event) -> std::optional<client_event>
@@ -194,7 +194,7 @@ auto client::process_message(message const &msg)  // NOLINT(readability-function
                                       [this](auto) -> std::optional<client_event> {
                                           return on_error(ksnp_error_code::KSNP_PROT_E_UNEXPECTED_MESSAGE);
                                       }};
-        return std::visit(version_msg_visitor, msg);
+        return std::visit(version_msg_visitor, static_cast<message::base const &>(msg));
     }
 
     overloads msg_visitor{[this](::ksnp_msg_error msg) -> std::optional<client_event> {
@@ -331,7 +331,7 @@ auto client::process_message(message const &msg)  // NOLINT(readability-function
                               return on_error(ksnp_error_code::KSNP_PROT_E_UNEXPECTED_MESSAGE);
                           }};
 
-    return std::visit(msg_visitor, msg);
+    return std::visit(msg_visitor, static_cast<message::base const &>(msg));
 }
 
 void client::push_message(message const msg)

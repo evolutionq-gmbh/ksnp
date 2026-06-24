@@ -120,7 +120,7 @@ auto message::into_message() const noexcept -> ::ksnp_message
             };
         },
     };
-    return std::visit(visitor, *this);
+    return std::visit(visitor, static_cast<base const &>(*this));
 }
 
 auto message::from_message(::ksnp_message msg) -> std::optional<message>

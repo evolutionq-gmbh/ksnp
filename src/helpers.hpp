@@ -30,6 +30,9 @@ struct overloads : Ts... {
     using Ts::operator()...;
 };
 
+template<class... Ts>
+overloads(Ts...) -> overloads<Ts...>;
+
 }  // namespace ksnp
 
 #define CATCH_ALL                                      \

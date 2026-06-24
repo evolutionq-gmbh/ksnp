@@ -592,7 +592,7 @@ class message
                           ksnp_msg_keep_alive_stream_reply,
                           ksnp_msg_error>
 {
-private:
+public:
     using base = std::variant<ksnp_msg_version,
                               ksnp_msg_open_stream,
                               ksnp_msg_open_stream_reply,
@@ -608,7 +608,6 @@ private:
                               ksnp_msg_keep_alive_stream_reply,
                               ksnp_msg_error>;
 
-public:
     using base::base;
     using base::operator=;
 
