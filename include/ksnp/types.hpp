@@ -2,7 +2,9 @@
 
 #include <concepts>
 #include <exception>
+#ifdef __cpp_lib_source_location
 #include <source_location>
+#endif
 #include <string_view>
 
 #include "ksnp/types.h"
@@ -18,10 +20,11 @@ namespace ksnp
 template<std::copyable Code>
 class base_exception : public std::exception
 {
-    Code                 error_code;
-    char const          *desc;
+    Code        error_code;
+    char const *desc;
+#ifdef __cpp_lib_source_location
     std::source_location loc;
-
+#endif
 public:
     /**
      * @brief Construct a new base exception object.
@@ -29,10 +32,17 @@ public:
      * @param error_code Error code associated with the exception.
      * @param location Source location associated with the exception.
      */
-    explicit base_exception(Code error_code, std::source_location location = std::source_location::current())
+    explicit base_exception(Code error_code
+#ifdef __cpp_lib_source_location
+                            ,
+                            std::source_location location = std::source_location::current()
+#endif
+                                )
         : error_code(error_code)
         , desc(nullptr)
+#ifdef __cpp_lib_source_location
         , loc(location)
+#endif
     {}
 
     /**
@@ -43,10 +53,18 @@ public:
      * for the lifetime of this object.
      * @param location Source location associated with the exception.
      */
-    base_exception(Code error_code, char const *desc, std::source_location location = std::source_location::current())
+    base_exception(Code        error_code,
+                   char const *desc
+#ifdef __cpp_lib_source_location
+                   ,
+                   std::source_location location = std::source_location::current()
+#endif
+                       )
         : error_code(error_code)
         , desc(desc)
+#ifdef __cpp_lib_source_location
         , loc(location)
+#endif
     {}
 
     /** @brief Copy constructor. */
@@ -109,8 +127,19 @@ public:
      * @param error_code Library error code causing the exception.
      * @param location Source location associated with the exception.
      */
-    explicit exception(ksnp_error error_code, std::source_location location = std::source_location::current())
-        : base_exception<ksnp_error>(error_code, ksnp_error_description(error_code), location)
+    explicit exception(ksnp_error error_code
+#ifdef __cpp_lib_source_location
+                       ,
+                       std::source_location location = std::source_location::current()
+#endif
+                           )
+        : base_exception<ksnp_error>(error_code,
+                                     ksnp_error_description(error_code)
+#ifdef __cpp_lib_source_location
+                                         ,
+                                     location
+#endif
+          )
     {}
 
     /** Copy constructor. */
@@ -142,9 +171,19 @@ public:
      * @param protocol_error Protocol error code causing the exception.
      * @param location Source location associated with the exception.
      */
-    explicit protocol_exception(ksnp_protocol_error  protocol_error,
-                                std::source_location location = std::source_location::current())
-        : base_exception(protocol_error.code, protocol_error.description, location)
+    explicit protocol_exception(ksnp_protocol_error protocol_error
+#ifdef __cpp_lib_source_location
+                                ,
+                                std::source_location location = std::source_location::current()
+#endif
+                                    )
+        : base_exception(protocol_error.code,
+                         protocol_error.description
+#ifdef __cpp_lib_source_location
+                         ,
+                         location
+#endif
+          )
     {}
 
     /** Copy constructor. */
