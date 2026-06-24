@@ -23,7 +23,7 @@ pub struct ServerConnection {
     server: *mut sys::ksnp_server,
 }
 
-// SAFETY: The sys::ksnp_server_connection can be moved across threads safely.
+// SAFETY: The sys::ksnp_server can be moved across threads safely.
 unsafe impl Send for ServerConnection {}
 
 impl Drop for ServerConnection {
@@ -34,7 +34,7 @@ impl Drop for ServerConnection {
 }
 
 impl<'ctx> ServerConnection {
-    /// Creates a new [`sys::ksnp_server_connection`] wrapper with a new
+    /// Creates a new [`sys::ksnp_server`] wrapper with a new
     /// server_connection that uses the given [`MessageContext`].
     pub fn new(ctx: MessageContext) -> Result<Self, Error> {
         let mut this = Self {
