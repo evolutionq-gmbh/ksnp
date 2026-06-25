@@ -4,6 +4,12 @@ default:
 variables:
   DEBIAN_FRONTEND: noninteractive
 
+include:
+  - project: 'evolutionq-gmbh/infrastructure'
+    file: '.gitlab-ci-gerrit.yml'
+    rules:
+      - if: $GERRIT_API_PASSWORD
+
 build:
   stage: build
   before_script:
