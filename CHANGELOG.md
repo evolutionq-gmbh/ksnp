@@ -1,6 +1,11 @@
 Changelog
 =========
 
+Version 0.4.2
+-------------
+
+* Fix the install rules for the Python bindings.
+
 Version 0.4.1
 -------------
 

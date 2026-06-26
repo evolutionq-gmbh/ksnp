@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.18)
 
-project(KNSP VERSION 0.4.1 LANGUAGES C CXX)
+project(KNSP VERSION 0.4.2 LANGUAGES C CXX)
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/cmake")
 
