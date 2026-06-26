@@ -65,5 +65,5 @@ set_target_properties(_core PROPERTIES
 file(WRITE ${CMAKE_BINARY_DIR}/ksnp/__init__.py "")
 
 install(TARGETS _core LIBRARY DESTINATION "ksnp")
-install(DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/ksnp DESTINATION ".")
+install(DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/ksnp DESTINATION "." PATTERN "__init__.py" EXCLUDE)
 install(DIRECTORY ${CMAKE_CURRENT_LIST_DIR}/src/ksnp DESTINATION ".")
