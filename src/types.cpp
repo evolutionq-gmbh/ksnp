@@ -11,6 +11,30 @@ auto ksnp_status_code_description(ksnp_status_code code) -> char const *
         return "operation not supported";
     case ksnp_status_code::KSNP_STATUS_NOTIFY_DUE_TO_PEER:
         return "stream state changed by peer";
+    case ksnp_status_code::KSNP_STATUS_INSUFFICIENT_RESOURCES:
+        return "insufficient resources";
+    case ksnp_status_code::KSNP_STATUS_UNSUPPORTED_EXTENSION:
+        return "required extension is not supported";
+    case ksnp_status_code::KSNP_STATUS_MALFORMED_EXTENSION:
+        return "extension is malformed";
+    case ksnp_status_code::KSNP_STATUS_TIMEOUT:
+        return "timeout occurred";
+    case ksnp_status_code::KSNP_STATUS_STREAM_IN_USE:
+        return "key stream is in use";
+    case ksnp_status_code::KSNP_STATUS_UNAUTHENTICATED:
+        return "client unauthenticated";
+    case ksnp_status_code::KSNP_STATUS_UNAUTHORIZED:
+        return "client unauthorized";
+    case ksnp_status_code::KSNP_STATUS_QOS_OUT_OF_RANGE:
+        return "QoS value(s) out of supported range";
+    case ksnp_status_code::KSNP_STATUS_QOS_UNSATISFIABLE:
+        return "QoS value(s) cannot be satisfied";
+    case ksnp_status_code::KSNP_STATUS_DESTINATION_UNKNOWN:
+        return "stream destination not known";
+    case ksnp_status_code::KSNP_STATUS_DESTINATION_UNAVAILABLE:
+        return "stream destination not reachable";
+    case ksnp_status_code::KSNP_STATUS_STREAM_CLOSED:
+        return "stream is closed";
     default:
         return nullptr;
     }

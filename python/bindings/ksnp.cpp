@@ -71,6 +71,18 @@ NB_MODULE(_core, mod)
         .value("INVALID_PARAMETER", ksnp_status_code::KSNP_STATUS_INVALID_PARAMETER)
         .value("OPERATION_NOT_SUPPORTED", ksnp_status_code::KSNP_STATUS_OPERATION_NOT_SUPPORTED)
         .value("NOTIFY_DUE_TO_PEER", ksnp_status_code::KSNP_STATUS_NOTIFY_DUE_TO_PEER)
+        .value("INSUFFICIENT_RESOURCES", ksnp_status_code::KSNP_STATUS_INSUFFICIENT_RESOURCES)
+        .value("UNSUPPORTED_EXTENSION", ksnp_status_code::KSNP_STATUS_UNSUPPORTED_EXTENSION)
+        .value("MALFORMED_EXTENSION", ksnp_status_code::KSNP_STATUS_MALFORMED_EXTENSION)
+        .value("TIMEOUT", ksnp_status_code::KSNP_STATUS_TIMEOUT)
+        .value("STREAM_IN_USE", ksnp_status_code::KSNP_STATUS_STREAM_IN_USE)
+        .value("UNAUTHENTICATED", ksnp_status_code::KSNP_STATUS_UNAUTHENTICATED)
+        .value("UNAUTHORIZED", ksnp_status_code::KSNP_STATUS_UNAUTHORIZED)
+        .value("QOS_OUT_OF_RANGE", ksnp_status_code::KSNP_STATUS_QOS_OUT_OF_RANGE)
+        .value("QOS_UNSATISFIABLE", ksnp_status_code::KSNP_STATUS_QOS_UNSATISFIABLE)
+        .value("DESTINATION_UNKNOWN", ksnp_status_code::KSNP_STATUS_DESTINATION_UNKNOWN)
+        .value("DESTINATION_UNAVAILABLE", ksnp_status_code::KSNP_STATUS_DESTINATION_UNAVAILABLE)
+        .value("STREAM_CLOSED", ksnp_status_code::KSNP_STATUS_STREAM_CLOSED)
         .def("__str__", ksnp_status_code_description);
 
     nb::enum_<ksnp_protocol_version>(mod, "ProtocolVersion").value("V1", ksnp_protocol_version::PROTOCOL_V1);

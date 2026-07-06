@@ -425,6 +425,33 @@ ENUM_TYPE(ksnp_status_code, uint32_t){
     /// @brief Closing or suspending stream due to corresponding action by
     /// peer.
     KSNP_STATUS_NOTIFY_DUE_TO_PEER      = 3,
+    /// @brief The system does not have the resources available to complete the
+    /// request. Try again later.
+    KSNP_STATUS_INSUFFICIENT_RESOURCES  = 4,
+    /// @brief A required extension is not supported by the server.
+    KSNP_STATUS_UNSUPPORTED_EXTENSION   = 5,
+    /// @brief The contents of an extension are malformed or could not be
+    /// parsed.
+    KSNP_STATUS_MALFORMED_EXTENSION     = 6,
+    /// @brief A timeout occurred.
+    KSNP_STATUS_TIMEOUT                 = 7,
+    /// @brief The stream with the given key stream ID is already in use.
+    KSNP_STATUS_STREAM_IN_USE           = 8,
+    /// @brief The client is not authenticated.
+    KSNP_STATUS_UNAUTHENTICATED         = 9,
+    /// @brief The client is not authorized to perform the operation.
+    KSNP_STATUS_UNAUTHORIZED            = 10,
+    /// @brief Some QoS parameters are out of the supported range.
+    KSNP_STATUS_QOS_OUT_OF_RANGE        = 11,
+    /// @brief Some of the QoS parameters could not be fulfilled currently.
+    KSNP_STATUS_QOS_UNSATISFIABLE       = 12,
+    /// @brief The key stream destination is not known to the server.
+    KSNP_STATUS_DESTINATION_UNKNOWN     = 13,
+    /// @brief The key stream destination is currently not reachable.
+    KSNP_STATUS_DESTINATION_UNAVAILABLE = 14,
+    /// @brief The key stream is closing or closed.
+    KSNP_STATUS_STREAM_CLOSED           = 15,
+
 };
 
 /// @brief Alias for @ref ksnp_status_code.
