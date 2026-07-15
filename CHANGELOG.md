@@ -1,6 +1,12 @@
 Changelog
 =========
 
+Version 0.4.3
+-------------
+
+* Define additional status codes.
+* Define type aliases for client and server events.
+
 Version 0.4.2
 -------------
 
