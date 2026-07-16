@@ -1,7 +1,8 @@
+from collections.abc import Buffer
 from enum import Enum
 from io import FileIO
-from socket import socket, SHUT_WR
-from typing import Self, cast, overload
+from socket import SHUT_WR
+from typing import Protocol, Self, cast, overload
 import selectors
 
 from .. import CloseDirection
@@ -17,8 +18,18 @@ class EventState(Enum):
     StreamOpen = 3
 
 
+class SocketLike(Protocol):
+    def recv(self, bufsize: int, flags: int = 0, /) -> bytes: ...
+
+    def send(self, data: Buffer, flags: int = 0, /) -> int: ...
+
+    def shutdown(self, how: int, /) -> None: ...
+
+    def fileno(self) -> int: ...
+
+
 class EventLoop[T: Client | Server]:
-    def __init__(self: Self, handle: type[T], sock: socket):
+    def __init__(self: Self, handle: type[T], sock: SocketLike):
         self._sock = sock
         self._read_buf = bytearray()
         self._write_buf = bytearray()
