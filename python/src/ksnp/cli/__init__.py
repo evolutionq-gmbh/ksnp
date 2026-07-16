@@ -1,12 +1,14 @@
 from enum import Enum
 from io import FileIO
 from socket import socket, SHUT_WR
-from typing import Self, cast
+from typing import Self, cast, overload
 import selectors
 
 from .. import CloseDirection
 from ..client import Client
+from ..client.event import Event as ClientEvent
 from ..server import Server
+from ..server.event import Event as ServerEvent
 
 
 class EventState(Enum):
@@ -29,7 +31,19 @@ class EventLoop[T: Client | Server]:
             self._handle.close_connection(CloseDirection.WRITE)
             self._stopped = True
 
-    def wait_event(self, stop_event: FileIO | None = None):
+    @overload
+    def wait_event(
+        self: "EventLoop[Client]", stop_event: FileIO | None = None
+    ) -> ClientEvent | None: ...
+
+    @overload
+    def wait_event(
+        self: "EventLoop[Server]", stop_event: FileIO | None = None
+    ) -> ServerEvent | None: ...
+
+    def wait_event(
+        self, stop_event: FileIO | None = None
+    ) -> ClientEvent | ServerEvent | None:
         with selectors.DefaultSelector() as sel:
             sel.register(self._sock, selectors.EVENT_READ)
             if stop_event is not None and not self._stopped:
