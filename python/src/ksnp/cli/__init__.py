@@ -44,16 +44,20 @@ class EventLoop[T: Client | Server]:
 
     @overload
     def wait_event(
-        self: "EventLoop[Client]", stop_event: FileIO | None = None
+        self: "EventLoop[Client]",
+        stop_event: FileIO | None = None,
+        timeout: float | None = None,
     ) -> ClientEvent | None: ...
 
     @overload
     def wait_event(
-        self: "EventLoop[Server]", stop_event: FileIO | None = None
+        self: "EventLoop[Server]",
+        stop_event: FileIO | None = None,
+        timeout: float | None = None,
     ) -> ServerEvent | None: ...
 
     def wait_event(
-        self, stop_event: FileIO | None = None
+        self, stop_event: FileIO | None = None, timeout: float | None = None
     ) -> ClientEvent | ServerEvent | None:
         with selectors.DefaultSelector() as sel:
             sel.register(self._sock, selectors.EVENT_READ)
@@ -76,9 +80,9 @@ class EventLoop[T: Client | Server]:
                     mask |= selectors.EVENT_WRITE
                 sel.modify(self._sock, mask)
 
-                events = sel.select(timeout=None)
+                events = sel.select(timeout=timeout)
                 if len(events) == 0:
-                    return None
+                    raise TimeoutError
 
                 for obj, mask in events:
                     if obj.fileobj == stop_event:
