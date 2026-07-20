@@ -1,7 +1,7 @@
 _core.stream.__prefix__:
     from uuid import UUID
 
-_core.message.__prefix__:
+_core.serde.messages.__prefix__:
     from uuid import UUID
 
 _core.server.event.__prefix__:
