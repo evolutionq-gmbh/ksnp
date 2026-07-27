@@ -72,6 +72,8 @@ class EventLoop[T: Client | Server]:
                     self._handle.flush_data()
                     if len(self._write_buf) == 0:
                         self._sock.shutdown(SHUT_WR)
+                        if not self._handle.want_read():
+                            return None
 
                 mask = 0
                 if self._handle.want_read():
