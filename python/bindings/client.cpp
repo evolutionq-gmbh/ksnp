@@ -233,6 +233,13 @@ public:
         auto raw_params = params.as_struct();
         ksnp::client::open_stream(&raw_params);
     }
+
+    auto keep_alive(pyksnp::stream::stream_id const &stream_id) -> void
+    {
+        uuid_t sid{};
+        std::ranges::copy(stream_id, std::begin(sid));
+        ksnp::client::keep_alive(sid);
+    }
 };
 
 auto register_module(nb::module_ &mod) -> void
@@ -256,6 +263,8 @@ auto register_module(nb::module_ &mod) -> void
         .def("open_stream", &client::open_stream, "parameters"_a)
         .def("add_capacity", &client::add_capacity, "additional_capacity"_a)
         .def("close_stream", &client::close_stream)
+        .def("suspend_stream", &client::suspend_stream, "timeout"_a)
+        .def("keep_alive", &client::keep_alive, "stream_id"_a)
         .def("close_connection", &client::close_connection, "dir"_a);
 }
 

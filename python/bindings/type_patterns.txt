@@ -1,8 +1,11 @@
-_core.stream.__prefix__:
+_core.client.__prefix__:
+    from uuid import UUID
+
+_core.server.event.__prefix__:
     from uuid import UUID
 
 _core.serde.messages.__prefix__:
     from uuid import UUID
 
-_core.server.event.__prefix__:
+_core.stream.__prefix__:
     from uuid import UUID
