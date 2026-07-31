@@ -6,12 +6,14 @@
 #include <variant>
 
 #include <ksnp/server.hpp>
-#include <nanobind/intrusive/ref.h>
 #include <nanobind/nanobind.h>
 #include <nanobind/stl/optional.h>
 #include <nanobind/stl/string.h>
 #include <nanobind/stl/tuple.h>
 #include <nanobind/stl/variant.h>
+
+// Make sure this headers follows nanobind.h
+#include <nanobind/intrusive/ref.h>
 
 #include "ksnp.h"
 #include "serde.h"
@@ -47,7 +49,7 @@ public:
         stream->dec_ref();
     }
 
-    auto get_stream() -> class stream *
+    [[nodiscard]] auto get_stream() const -> nb::ref<class stream>
     {
         return this->stream;
     }
@@ -71,7 +73,7 @@ public:
         }
     }
 
-    auto get_stream() -> class stream *
+    [[nodiscard]] auto get_stream() const -> nb::ref<class stream>
     {
         return this->stream;
     }
@@ -235,18 +237,22 @@ public:
         }
     }
 
-    auto suspend_stream_ok(uint32_t timeout) -> void
+    auto suspend_stream_ok(uint32_t timeout) -> nb::ref<stream>
     {
         struct ksnp_stream *base_stream = ksnp::server::suspend_stream_ok(timeout);
-        stream::from_stream_ptr(base_stream)->dec_ref();
+        auto                stream_ref  = nb::ref<stream>(stream::from_stream_ptr(base_stream));
+        stream_ref->dec_ref();
         this->has_stream = false;
+        return stream_ref;
     }
 
-    auto close_stream() -> void
+    auto close_stream() -> nb::ref<stream>
     {
         struct ksnp_stream *base_stream = ksnp::server::close_stream();
-        stream::from_stream_ptr(base_stream)->dec_ref();
+        auto                stream_ref  = nb::ref<stream>(stream::from_stream_ptr(base_stream));
+        stream_ref->dec_ref();
         this->has_stream = false;
+        return stream_ref;
     }
 };
 
