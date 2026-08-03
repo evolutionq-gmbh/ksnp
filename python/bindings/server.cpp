@@ -254,6 +254,15 @@ public:
         this->has_stream = false;
         return stream_ref;
     }
+
+    auto get_stream() -> nb::ref<stream>
+    {
+        struct ksnp_stream *base_stream = ksnp::server::get_stream();
+        if (base_stream == nullptr) {
+            return {};
+        }
+        return {stream::from_stream_ptr(base_stream)};
+    }
 };
 
 auto register_module(nb::module_ &mod) -> void
@@ -274,6 +283,7 @@ auto register_module(nb::module_ &mod) -> void
         .def("write_data", &server::write_data, "data"_a)
         .def("flush_data", &server::flush_data)
         .def("next_event", &server::next_event)
+        .def("get_stream", &server::get_stream)
         .def("open_stream_ok", &server::open_stream_ok, "stream"_a, "parameters"_a)
         .def("open_stream_fail",
              &server::open_stream_fail,
