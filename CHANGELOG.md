@@ -1,6 +1,11 @@
 Changelog
 =========
 
+Version 0.4.4
+-------------
+
+* Minor improvements in the Python bindings.
+
 Version 0.4.3
 -------------
 
