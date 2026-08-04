@@ -264,12 +264,21 @@ auto client::process_message(message const &msg)  // NOLINT(readability-function
                               case stream_state::closing:
                                   return on_error(ksnp_error_code::KSNP_PROT_E_UNEXPECTED_MESSAGE);
                               case stream_state::suspending:
-                                  this->stream_state = stream_state::closed;
-                                  return ::ksnp_client_event_stream_suspend{
-                                      .code    = msg.code,
-                                      .timeout = msg.code == ksnp_status_code::KSNP_STATUS_SUCCESS ? msg.timeout : 0,
-                                      .message = msg.message,
-                                  };
+                                  if (msg.code == ksnp_status_code::KSNP_STATUS_SUCCESS) {
+                                      this->stream_state = stream_state::closed;
+                                      return ::ksnp_client_event_stream_suspend{
+                                          .code    = msg.code,
+                                          .timeout = msg.timeout,
+                                          .message = nullptr,
+                                      };
+                                  } else {
+                                      this->stream_state = stream_state::open;
+                                      return ::ksnp_client_event_stream_suspend{
+                                          .code    = msg.code,
+                                          .timeout = 0,
+                                          .message = msg.message,
+                                      };
+                                  }
                               case stream_state::error:
                               default:
                                   throw std::logic_error("invalid stream state");

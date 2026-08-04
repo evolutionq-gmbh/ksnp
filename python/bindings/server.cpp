@@ -246,6 +246,16 @@ public:
         return stream_ref;
     }
 
+    auto suspend_stream_fail(ksnp_status_code reason, std::optional<char const *> message) -> void
+    {
+        ksnp::server::suspend_stream_fail(reason, message.value_or(nullptr));
+    }
+
+    auto keep_alive_fail(ksnp_status_code reason, std::optional<char const *> message) -> void
+    {
+        ksnp::server::keep_alive_fail(reason, message.value_or(nullptr));
+    }
+
     auto close_stream() -> nb::ref<stream>
     {
         struct ksnp_stream *base_stream = ksnp::server::close_stream();
@@ -295,7 +305,7 @@ auto register_module(nb::module_ &mod) -> void
         .def("keep_alive_ok", &server::keep_alive_ok)
         .def("keep_alive_fail", &server::keep_alive_fail, "reason"_a, "message"_a.none() = std::nullopt)
         .def("close_stream", &server::close_stream)
-        .def("close_connection", &server::close_connection, "dir"_a);
+        .def("close_connection", &server::close_connection, "direction"_a);
 }
 
 }  // namespace pyksnp::server

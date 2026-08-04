@@ -265,7 +265,7 @@ auto register_module(nb::module_ &mod) -> void
         .def("close_stream", &client::close_stream)
         .def("suspend_stream", &client::suspend_stream, "timeout"_a)
         .def("keep_alive", &client::keep_alive, "stream_id"_a)
-        .def("close_connection", &client::close_connection, "dir"_a);
+        .def("close_connection", &client::close_connection, "direction"_a);
 }
 
 }  // namespace pyksnp::client

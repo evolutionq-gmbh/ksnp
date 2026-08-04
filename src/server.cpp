@@ -391,18 +391,20 @@ auto server::suspend_stream_ok(uint32_t timeout) -> ksnp_stream *
     }
 
     if (this->current_action) {
-        this->push_message(ksnp_msg_suspend_stream_notify{
-            .code    = ksnp_status_code::KSNP_STATUS_SUCCESS,
-            .timeout = timeout,
-        });
-        this->current_action = std::nullopt;
-        this->stream_state   = stream_state::suspending;
-    } else {
         this->push_message(ksnp_msg_suspend_stream_reply{
             .code    = ksnp_status_code::KSNP_STATUS_SUCCESS,
             .timeout = timeout,
             .message = nullptr,
         });
+        this->current_action = std::nullopt;
+        this->stream_state   = stream_state::closed;
+    } else {
+        this->push_message(ksnp_msg_suspend_stream_notify{
+            .code    = ksnp_status_code::KSNP_STATUS_SUCCESS,
+            .timeout = timeout,
+
+        });
+        this->stream_state = stream_state::suspending;
     }
 
     return this->current_stream.release();
