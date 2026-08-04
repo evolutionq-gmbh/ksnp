@@ -297,8 +297,9 @@ auto server::process_message(message const &msg) -> std::optional<server_event>
                                   throw std::logic_error("invalid stream state");
                               }
                           },
-                          [](::ksnp_msg_keep_alive_stream msg) -> std::optional<server_event> {
-                              auto event = ::ksnp_server_event_keep_alive{};
+                          [this](::ksnp_msg_keep_alive_stream msg) -> std::optional<server_event> {
+                              this->current_action = action::keep_alive;
+                              auto event           = ::ksnp_server_event_keep_alive{};
                               std::ranges::copy(msg.key_stream_id, std::begin(event.stream_id));
                               return event;
                           },
