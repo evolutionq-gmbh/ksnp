@@ -1,6 +1,11 @@
 Changelog
 =========
 
+Version 0.4.5
+-------------
+
+* Various fixes for stream suspend handling.
+
 Version 0.4.4
 -------------
 
