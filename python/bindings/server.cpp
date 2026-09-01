@@ -265,11 +265,11 @@ public:
         return stream_ref;
     }
 
-    auto get_stream() -> nb::ref<stream>
+    auto get_stream() -> std::optional<nb::ref<stream>>
     {
         struct ksnp_stream *base_stream = ksnp::server::get_stream();
         if (base_stream == nullptr) {
-            return {};
+            return std::nullopt;
         }
         return {stream::from_stream_ptr(base_stream)};
     }
