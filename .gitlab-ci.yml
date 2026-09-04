@@ -24,6 +24,7 @@ build:
       libjson-c-dev
       ninja-build
       uuid-dev
+      libicu-dev
   script:
     - >-
       cmake -S . -B build
@@ -49,6 +50,7 @@ test:
       apt-get install -y --no-install-recommends
       libjson-c5
       libuuid1
+      libicu76
   script:
     - build/Release/test_api
     - build/Release/server ::1 5678 &

@@ -15,6 +15,7 @@ find_package(Boost CONFIG)
 find_package(Doxygen)
 find_package(LibUUID REQUIRED)
 find_package(json-c CONFIG REQUIRED)
+find_package(ICU REQUIRED uc)
 
 set(CMAKE_COMPILE_WARNING_AS_ERROR ON)
 set(CMAKE_LINK_WARNING_AS_ERROR ON)
@@ -84,7 +85,7 @@ add_library(ksnp STATIC
   ${PUBLIC_HEADERS}
 )
 
-target_link_libraries(ksnp PUBLIC LibUUID::LibUUID json-c::json-c)
+target_link_libraries(ksnp PUBLIC LibUUID::LibUUID json-c::json-c ICU::uc)
 target_include_directories(ksnp PUBLIC ${CMAKE_CURRENT_LIST_DIR}/include "${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/include")
 target_include_directories(ksnp PRIVATE ${CMAKE_CURRENT_LIST_DIR}/src)
 target_compile_features(ksnp PUBLIC cxx_std_20)

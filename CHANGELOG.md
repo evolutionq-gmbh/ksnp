@@ -1,6 +1,11 @@
 Changelog
 =========
 
+Current
+-------
+
+* Correctly validate UTF-8 strings in messages.
+
 Version 0.4.5
 -------------
 

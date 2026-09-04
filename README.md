@@ -13,6 +13,7 @@ This library is written in C++20 and requires a C++20-compatible compiler.
 Furthermore, it makes use of the following additional libraries:
 
 * [json-c](https://github.com/json-c/json-c)
+* [ICU](https://icu.unicode.org)
 * libuuid, which is part of the linux-utils package.
 
 A CMake project is included that can be used to build the library and its

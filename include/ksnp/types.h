@@ -405,6 +405,11 @@ ENUM_TYPE(ksnp_error_code, uint32_t){
     /// @brief An incomplete message has been received, but the receiving
     /// channel is closed.
     KSNP_PROT_E_INCOMPLETE_MSG     = 14,
+    /// @brief Deserialization failed: malformed UTF-8 string.
+    KSNP_PROT_E_BAD_UTF_8          = 15,
+    /// @brief Deserialization failed: code point outside of Unicode Assignables
+    /// set.
+    KSNP_PROT_E_BAD_CODE_POINT     = 16,
 };
 
 /// @brief Alias for @ref ksnp_error_code.

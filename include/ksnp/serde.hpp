@@ -15,7 +15,6 @@
 
 namespace ksnp
 {
-
 /**
  * @brief Wrapper for ksnp_buffer that makes it act as a Container.
  */
@@ -373,11 +372,7 @@ public:
      * @param network JSON object containing the network string. May also be
      * null.
      */
-    stream_address(json_ptr sae, json_ptr network)
-        : sae(std::move(sae))
-        , network(std::move(network))
-        , address{.sae = json_object_get_string(*this->sae), .network = json_object_get_string(*this->network)}
-    {}
+    stream_address(json_ptr sae, json_ptr network);
 
     /**
      * @brief Get the C API address.

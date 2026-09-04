@@ -6,7 +6,7 @@ FROM ${IMAGE} AS build
 ARG DEBIAN_FRONTEND
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    cmake ninja-build gcc g++ libjson-c-dev uuid-dev
+    cmake ninja-build gcc g++ libjson-c-dev uuid-dev libicu-dev
 
 WORKDIR /ksnp
 

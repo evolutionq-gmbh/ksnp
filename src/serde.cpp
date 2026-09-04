@@ -17,6 +17,9 @@
 #include <json-c/json_object.h>
 #include <json-c/json_object_iterator.h>
 #include <json-c/json_tokener.h>
+#include <unicode/uchar.h>
+#include <unicode/uniset.h>
+#include <unicode/utf8.h>
 #include <uuid/uuid.h>
 
 #include "helpers.hpp"
@@ -258,6 +261,70 @@ template<typename T, typename U8>
 auto load_next_enum(std::span<U8> &data) -> T
 {
     return static_cast<T>(load_next<typename std::underlying_type_t<T>>(data));
+}
+
+constexpr UChar32 UC_PLANE_OFFSET = 0x10000;
+constexpr UChar32 UC_LAST_ASSIGNABLE_PER_PLANE = 0xFFFD;
+
+// Check whether the given data contains valid UTF-8 with code points in
+// the Unicode Assignables set as defined by RFC 9839, section 4.3.
+void validate_utf8(std::span<uint8_t const> data)
+{
+    static const auto assignables = [] {
+        // Assignables: %x9 / %xA / %xD / %x20-7E / %xA0-D7FF /
+        //              %xE000-FDCF / %xFDF0-FFFD /
+        //              %x10000-1FFFD / %x20000-2FFFD / ... /
+        //              %x0F0000-0FFFFD / %x100000-10FFFD
+        icu::UnicodeSet assignables;
+        // Code points in the basic plane:
+        assignables.add(0x9).add(0xA).add(0xD)
+            .add(0x20, 0x7E)
+            .add(0xA0, 0xD7FF)
+            .add(0xE000, 0xFDFC)
+            .add(0xFDF0, UC_LAST_ASSIGNABLE_PER_PLANE);
+        // Supplementary planes:
+        for (UChar32 base = UC_PLANE_OFFSET; base < UCHAR_MAX_VALUE; base += UC_PLANE_OFFSET) {
+            assignables.add(base, base + UC_LAST_ASSIGNABLE_PER_PLANE);
+        }
+        return assignables;
+    }();
+
+    int32_t idx = 0;
+    int32_t const len = static_cast<int32_t>(data.size());
+
+    while (idx < len) {
+        UChar32 code_point;
+#ifdef __clang__
+#pragma clang unsafe_buffer_usage begin
+#endif
+        U8_NEXT(data.data(), idx, len, code_point);
+#ifdef __clang__
+#pragma clang unsafe_buffer_usage end
+#endif
+
+        if (code_point == U_SENTINEL) {
+            // U8_NEXT detected malformed UTF-8.
+            throw ksnp::protocol_exception(ksnp_error_code::KSNP_PROT_E_BAD_UTF_8, "malformed UTF-8 string");
+        }
+
+        if (!assignables.contains(code_point)) {
+            throw ksnp::protocol_exception(ksnp_error_code::KSNP_PROT_E_BAD_CODE_POINT, "code point outside Unicode Assignables set");
+        }
+    }
+}
+
+[[nodiscard]] auto json_to_utf8_string(json_object *obj) -> char const *
+{
+    auto const *str = json_object_get_string(obj);
+    auto len = json_object_get_string_len(obj);
+#ifdef __clang__
+#pragma clang unsafe_buffer_usage begin
+#endif
+    validate_utf8(std::span{reinterpret_cast<uint8_t const *>(str), static_cast<size_t>(len)});
+#ifdef __clang__
+#pragma clang unsafe_buffer_usage end
+#endif
+    return str;
 }
 
 void json_to_stream_id(json_object *obj, ksnp_key_stream_id &stream_id)
@@ -851,6 +918,12 @@ void set_qos(qos_value<T> value, U &dest, std::vector<T> &storage)
 namespace ksnp
 {
 
+stream_address::stream_address(json_ptr sae, json_ptr network)
+    : sae(std::move(sae))
+    , network(std::move(network))
+    , address{.sae = json_to_utf8_string(*this->sae), .network = json_to_utf8_string(*this->network)}
+{}
+
 void message_context::free_last_message()
 {
     if (!this->last_message_len.has_value()) {
@@ -870,6 +943,7 @@ auto message_context::load_next_string(std::span<uint8_t const> &data) -> char c
         this->status_message.clear();
         return nullptr;
     }
+    validate_utf8(data);
     this->status_message.assign(data.begin(), data.end());
     data = data.subspan(data.size());
     return this->status_message.c_str();

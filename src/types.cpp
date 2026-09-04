@@ -73,6 +73,10 @@ auto ksnp_protocol_error_description(ksnp_error_code code) -> char const *
         return "JSON data is missing";
     case ksnp_error_code::KSNP_PROT_E_INCOMPLETE_MSG:
         return "incomplete message, but receiving channel closed";
+    case ksnp_error_code::KSNP_PROT_E_BAD_UTF_8:
+        return "malformed UTF-8 string";
+    case ksnp_error_code::KSNP_PROT_E_BAD_CODE_POINT:
+        return "bad code point in UTF-8 string";
     default:
         return nullptr;
     }
