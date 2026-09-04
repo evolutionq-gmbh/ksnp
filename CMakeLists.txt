@@ -121,14 +121,23 @@ if (BUILD_TEST AND Boost_FOUND)
 endif (BUILD_TEST AND Boost_FOUND)
 
 if (BUILD_FUZZ_TEST)
-  add_executable(fuzz-test
-    fuzzing/main.cpp
-  )
-  target_link_libraries(fuzz-test PRIVATE ksnp)
+  add_library(fuzz-common INTERFACE)
+  target_link_libraries(fuzz-common INTERFACE ksnp)
   if (CMAKE_CXX_COMPILER_ID STREQUAL "Clang" OR CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-    target_compile_options(fuzz-test PRIVATE -g -fsanitize=address -Wno-gnu-statement-expression-from-macro-expansion)
-    target_link_options(fuzz-test PRIVATE -fsanitize=address)
+    target_compile_options(fuzz-common INTERFACE -g -fsanitize=address -Wno-gnu-statement-expression-from-macro-expansion -Wno-unsafe-buffer-usage)
+    target_link_options(fuzz-common INTERFACE -fsanitize=address)
   endif ()
+  target_include_directories(fuzz-common INTERFACE ${CMAKE_CURRENT_LIST_DIR}/test ${CMAKE_CURRENT_LIST_DIR}/fuzzing)
+
+  add_executable(fuzz-parser
+    fuzzing/parser.cpp
+  )
+  target_link_libraries(fuzz-parser PRIVATE fuzz-common)
+
+  add_executable(fuzz-serializer
+    fuzzing/serializer.cpp
+  )
+  target_link_libraries(fuzz-serializer PRIVATE fuzz-common)
 endif (BUILD_FUZZ_TEST)
 
 if (BUILD_EXAMPLES)

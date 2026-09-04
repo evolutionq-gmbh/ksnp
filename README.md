@@ -107,13 +107,14 @@ build. Thus, we create a different CMake build directory:
 
 ```shell
 cmake -S . -B build-fuzz -DCMAKE_TOOLCHAIN_FILE=cmake/AFL.cmake -DBUILD_FUZZ_TEST=ON
-cmake --build build-fuzz --target fuzz-test --parallel
+cmake --build build-fuzz --target fuzz-parser --target fuzz-serializer --parallel
 ```
 
 Then run the fuzzer with a set of initial data:
 
 ```shell
-afl-fuzz -i fuzzing/input -o /tmp/fuzz-output build-fuzz/fuzz-test
+afl-fuzz -i fuzzing/input -o /tmp/fuzz-out-parse build-fuzz/fuzz-parser
+afl-fuzz -i fuzzing/input -o /tmp/fuzz-out-ser build-fuzz/fuzz-serializer
 ```
 
 Note that you will likely need to adjust some settings on your system for AFL to

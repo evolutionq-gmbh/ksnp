@@ -285,6 +285,46 @@ auto inline operator==(ksnp_msg_keep_alive_stream_reply const &left, ksnp_msg_ke
     return compare2(left, right);
 }
 
+auto inline operator==(ksnp_message const &left, ksnp_message const &right) -> bool
+{
+    if (left.type != right.type) {
+        return false;
+    }
+
+    switch (left.type) {
+    case ksnp_message_type::KSNP_MSG_NONE:
+        return true;
+    case ksnp_message_type::KSNP_MSG_ERROR:
+        return left.error == right.error;
+    case ksnp_message_type::KSNP_MSG_VERSION:
+        return left.version == right.version;
+    case ksnp_message_type::KSNP_MSG_OPEN_STREAM:
+        return left.open_stream == right.open_stream;
+    case ksnp_message_type::KSNP_MSG_OPEN_STREAM_REPLY:
+        return left.open_stream_reply == right.open_stream_reply;
+    case ksnp_message_type::KSNP_MSG_CLOSE_STREAM:
+        return left.close_stream == right.close_stream;
+    case ksnp_message_type::KSNP_MSG_CLOSE_STREAM_REPLY:
+        return left.close_stream_reply == right.close_stream_reply;
+    case ksnp_message_type::KSNP_MSG_CLOSE_STREAM_NOTIFY:
+        return left.close_stream_notify == right.close_stream_notify;
+    case ksnp_message_type::KSNP_MSG_SUSPEND_STREAM:
+        return left.suspend_stream == right.suspend_stream;
+    case ksnp_message_type::KSNP_MSG_SUSPEND_STREAM_REPLY:
+        return left.suspend_stream_reply == right.suspend_stream_reply;
+    case ksnp_message_type::KSNP_MSG_SUSPEND_STREAM_NOTIFY:
+        return left.suspend_stream_notify == right.suspend_stream_notify;
+    case ksnp_message_type::KSNP_MSG_KEEP_ALIVE_STREAM:
+        return left.keep_alive_stream == right.keep_alive_stream;
+    case ksnp_message_type::KSNP_MSG_KEEP_ALIVE_STREAM_REPLY:
+        return left.keep_alive_stream_reply == right.keep_alive_stream_reply;
+    case ksnp_message_type::KSNP_MSG_CAPACITY_NOTIFY:
+        return left.capacity_notify == right.capacity_notify;
+    case ksnp_message_type::KSNP_MSG_KEY_DATA_NOTIFY:
+        return left.key_data_notify == right.key_data_notify;
+    }
+}
+
 auto inline operator==(ksnp_client_event_handshake const &left, ksnp_client_event_handshake const &right) -> bool
 {
     return compare1(left, right);
