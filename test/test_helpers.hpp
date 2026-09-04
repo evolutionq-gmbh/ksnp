@@ -298,13 +298,9 @@ auto inline operator==(ksnp_client_event_stream_open const &left, ksnp_client_ev
 
     bool param_eq;
     if (left.code == ksnp_status_code::KSNP_STATUS_SUCCESS) {
-        param_eq = compare_eq(*left.parameters.reply, *right.parameters.reply);
+        param_eq = compare_eq(left.parameters.reply, right.parameters.reply);
     } else {
-        if (left.parameters.qos == nullptr) {
-            param_eq = left.parameters.qos == right.parameters.qos;
-        } else {
-            param_eq = compare_eq(*left.parameters.qos, *right.parameters.qos);
-        }
+        param_eq = compare_eq(left.parameters.qos, right.parameters.qos);
     }
     return param_eq && compare_eq(left.message, right.message);
 }
