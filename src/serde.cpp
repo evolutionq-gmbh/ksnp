@@ -965,6 +965,10 @@ auto message_context::load_next_json(std::span<uint8_t const> &data, size_t json
     // an exception.
     unique_obj<json_tokener *, json_tokener_free> tok(json_tokener_new());
 
+    // Be strict when parsing JSON, e.g., do not allow parsing a value like
+    // "42E" as a floating point number.
+    json_tokener_set_flags(tok.get(), JSON_TOKENER_STRICT);
+
     auto const *data_ptr = data.data();
     auto *obj = json_tokener_parse_ex(tok.get(), reinterpret_cast<char const *>(data_ptr), static_cast<int>(json_len));
     if (obj == nullptr) {

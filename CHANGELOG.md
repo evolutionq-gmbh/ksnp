@@ -5,6 +5,7 @@ Current
 -------
 
 * Correctly validate UTF-8 strings in messages.
+* Enforce stricter parsing of JSON data.
 
 Version 0.4.5
 -------------
