@@ -113,8 +113,8 @@ cmake --build build-fuzz --target fuzz-parser --target fuzz-serializer --paralle
 Then run the fuzzer with a set of initial data:
 
 ```shell
-afl-fuzz -i fuzzing/input -o /tmp/fuzz-out-parse build-fuzz/fuzz-parser
-afl-fuzz -i fuzzing/input -o /tmp/fuzz-out-ser build-fuzz/fuzz-serializer
+afl-fuzz -i fuzzing/input/parser -o /tmp/fuzz-out-parse build-fuzz/fuzz-parser
+afl-fuzz -i fuzzing/input/serializer -o /tmp/fuzz-out-ser build-fuzz/fuzz-serializer
 ```
 
 Note that you will likely need to adjust some settings on your system for AFL to
