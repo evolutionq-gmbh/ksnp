@@ -566,11 +566,11 @@ requires std::convertible_to<decltype(std::declval<QosExpectedValue>().range.min
         auto range_obj = json_ptr(check_alloc(json_object_new_object()));
         json_object_object_add_ex(range_obj.get(),
                                   json_key_qos_range_min.c_str(),
-                                  check_alloc(ToJson(qos.range.min)),
+                                  ToJson(qos.range.min),
                                   JSON_C_OBJECT_ADD_CONSTANT_KEY | JSON_C_OBJECT_ADD_KEY_IS_NEW);
         json_object_object_add_ex(range_obj.get(),
                                   json_key_qos_range_max.c_str(),
-                                  check_alloc(ToJson(qos.range.max)),
+                                  ToJson(qos.range.max),
                                   JSON_C_OBJECT_ADD_CONSTANT_KEY | JSON_C_OBJECT_ADD_KEY_IS_NEW);
         json_object_object_add_ex(
             obj, key.c_str(), range_obj.release(), JSON_C_OBJECT_ADD_CONSTANT_KEY | JSON_C_OBJECT_ADD_KEY_IS_NEW);
@@ -589,7 +589,7 @@ requires std::convertible_to<decltype(std::declval<QosExpectedValue>().range.min
         }
         auto array_obj = json_ptr(check_alloc(json_object_new_array_ext(static_cast<int>(list.size()))));
         for (auto item: list) {
-            if (json_object_array_add(array_obj.get(), check_alloc(ToJson(item))) != 0) {
+            if (json_object_array_add(array_obj.get(), ToJson(item)) != 0) {
                 throw ksnp::exception(ksnp_error::KSNP_E_NO_MEM);
             }
         }
@@ -602,19 +602,33 @@ requires std::convertible_to<decltype(std::declval<QosExpectedValue>().range.min
     }
 }
 
+[[nodiscard]] auto uint64_to_json_checked(uint64_t val) -> json_object *
+{
+    return check_alloc(json_object_new_uint64(val));
+}
+
+[[nodiscard]] auto rate_to_json_checked(struct ksnp_rate rate) -> json_object *
+{
+    auto rate_obj = rate_to_json(rate);
+    if (rate_obj == nullptr) {
+        throw ksnp::exception(ksnp_error::KSNP_E_INVALID_ARGUMENT);
+    }
+    return rate_obj;
+}
+
 void add_qos_u16_to_json(json_object *obj, zstring_view key, ksnp_qos_u16 qos)
 {
-    add_qos_to_json<ksnp_qos_u16, uint64_t, json_object_new_uint64>(obj, key, qos);
+    add_qos_to_json<ksnp_qos_u16, uint64_t, uint64_to_json_checked>(obj, key, qos);
 }
 
 void add_qos_u32_to_json(json_object *obj, zstring_view key, ksnp_qos_u32 qos)
 {
-    add_qos_to_json<ksnp_qos_u32, uint64_t, json_object_new_uint64>(obj, key, qos);
+    add_qos_to_json<ksnp_qos_u32, uint64_t, uint64_to_json_checked>(obj, key, qos);
 }
 
 void add_qos_rate_to_json(json_object *obj, zstring_view key, ksnp_qos_rate qos)
 {
-    add_qos_to_json<ksnp_qos_rate, struct ksnp_rate, rate_to_json>(obj, key, qos);
+    add_qos_to_json<ksnp_qos_rate, struct ksnp_rate, rate_to_json_checked>(obj, key, qos);
 }
 
 template<typename T>
