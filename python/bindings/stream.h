@@ -218,9 +218,9 @@ public:
     {
         if (rate.seconds != 0) {
             base::operator=(std::make_tuple(rate.bits, rate.seconds));
+        } else {
+            base::operator=(rate.bits);
         }
-
-        base::operator=(rate.bits);
     }
 
     [[nodiscard]] auto to_ksnp_rate() const -> ksnp_rate
