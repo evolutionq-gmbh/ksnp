@@ -584,6 +584,9 @@ requires std::convertible_to<decltype(std::declval<QosExpectedValue>().range.min
 #ifdef __clang__
 #pragma clang unsafe_buffer_usage end
 #endif
+        if (list.empty()) {
+            throw exception(ksnp_error::KSNP_E_INVALID_ARGUMENT);
+        }
         if (!std::in_range<int>(list.size())) {
             throw exception(ksnp_error::KSNP_E_INVALID_ARGUMENT);
         }
