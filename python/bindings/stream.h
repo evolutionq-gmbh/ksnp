@@ -554,6 +554,32 @@ struct type_caster<pyksnp::stream::rate> {
     }
 };
 
+template<>
+struct type_caster<ksnp_rate> {
+    using target = ksnp_rate;
+    using base   = pyksnp::stream::rate;
+
+    // NOLINTNEXTLINE
+    NB_TYPE_CASTER(target, type_caster<base>::Name)
+
+    auto from_python(handle src, uint8_t flags, cleanup_list *cleanup) noexcept -> bool
+    {
+        make_caster<base> caster;
+
+        if (!caster.from_python(src, flags, cleanup)) {
+            return false;
+        }
+
+        value = (caster.operator cast_t<base>()).to_ksnp_rate();
+        return true;
+    }
+
+    static auto from_cpp(target const &value, rv_policy policy, cleanup_list *cleanup) noexcept -> handle
+    {
+        return make_caster<base>::from_cpp(base(value), policy, cleanup);
+    }
+};
+
 template<typename T>
 struct type_caster<pyksnp::stream::qos<T>> {
     using target = pyksnp::stream::qos<T>;

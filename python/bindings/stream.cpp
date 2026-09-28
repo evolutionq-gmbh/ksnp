@@ -106,7 +106,18 @@ auto register_module(nb::module_ &mod) -> void
         .def_ro("min_bps", &open_params::min_bps)
         .def_ro("max_bps", &open_params::max_bps)
         .def_ro("ttl", &open_params::ttl)
-        .def_ro("provision_size", &open_params::provision_size);
+        .def_ro("provision_size", &open_params::provision_size)
+        .def("__repr__",
+             repr<open_params>("OpenParams",
+                               field("stream_id", &open_params::stream_id),
+                               field("source", &open_params::source),
+                               field("destination", &open_params::destination),
+                               field("chunk_size", &open_params::chunk_size),
+                               field("capacity", &open_params::capacity),
+                               field("min_bps", &open_params::min_bps),
+                               field("max_bps", &open_params::max_bps),
+                               field("ttl", &open_params::ttl),
+                               field("provision_size", &open_params::provision_size)));
 
     nb::class_<accepted_params>(mod, "AcceptedParams")
         .def(nb::init<std::optional<stream_id>,
@@ -126,7 +137,15 @@ auto register_module(nb::module_ &mod) -> void
         .def_ro("position", &accepted_params::position)
         .def_ro("max_key_delay", &accepted_params::max_key_delay)
         .def_ro("min_bps", &accepted_params::min_bps)
-        .def_ro("provision_size", &accepted_params::provision_size);
+        .def_ro("provision_size", &accepted_params::provision_size)
+        .def("__repr__",
+             repr<accepted_params>("AcceptedParams",
+                                   field("stream_id", &accepted_params::stream_id),
+                                   field("chunk_size", &accepted_params::chunk_size),
+                                   field("position", &accepted_params::position),
+                                   field("max_key_delay", &accepted_params::max_key_delay),
+                                   field("min_bps", &accepted_params::min_bps),
+                                   field("provision_size", &accepted_params::provision_size)));
 
     nb::class_<qos_params>(mod, "QosParams")
         .def(
@@ -151,6 +170,12 @@ auto register_module(nb::module_ &mod) -> void
                          return qos<ksnp_rate>::convert_value<rate>(params.min_bps);
                      })
         .def_ro("ttl", &qos_params::ttl)
-        .def_ro("provision_size", &qos_params::provision_size);
+        .def_ro("provision_size", &qos_params::provision_size)
+        .def("__repr__",
+             repr<qos_params>("QosParams",
+                              field("chunk_size", &qos_params::chunk_size),
+                              field("min_bps", &qos_params::min_bps),
+                              field("ttl", &qos_params::ttl),
+                              field("provision_size", &qos_params::provision_size)));
 }
 }  // namespace pyksnp::stream

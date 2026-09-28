@@ -1,7 +1,9 @@
 
 #include <Python.h>
 
+#include <format>
 #include <optional>
+#include <string>
 #include <utility>
 #include <variant>
 
@@ -11,6 +13,7 @@
 #include <nanobind/stl/string.h>
 #include <nanobind/stl/tuple.h>
 #include <nanobind/stl/variant.h>
+#include <uuid/uuid.h>
 
 // Make sure this headers follows nanobind.h
 #include <nanobind/intrusive/ref.h>
@@ -40,18 +43,13 @@ public:
 
 class event_close_stream
 {
+public:
     nb::ref<class stream> stream;
 
-public:
     explicit event_close_stream(ksnp_server_event_close_stream event) : stream(stream::from_stream_ptr(event.stream))
     {
         // Remove the ref held by KSNP
         stream->dec_ref();
-    }
-
-    [[nodiscard]] auto get_stream() const -> nb::ref<class stream>
-    {
-        return this->stream;
     }
 };
 
@@ -71,11 +69,6 @@ public:
             // Remove the ref held by KSNP
             stream->dec_ref();
         }
-    }
-
-    [[nodiscard]] auto get_stream() const -> nb::ref<class stream>
-    {
-        return this->stream;
     }
 };
 
@@ -115,31 +108,57 @@ auto register_module(nb::module_ &mod) -> void
     using namespace nb::literals;
 
     nb::class_<ksnp_server_event_handshake>(mod, "Handshake")
-        .def_ro("protocol", &ksnp_server_event_handshake::protocol);
+        .def_ro("protocol", &ksnp_server_event_handshake::protocol)
+        .def("__repr__",
+             repr<ksnp_server_event_handshake>("Handshake", field("protocol", &ksnp_server_event_handshake::protocol)));
 
-    nb::class_<event::event_open_stream>(mod, "OpenStream").def_ro("parameters", &event::event_open_stream::parameters);
+    nb::class_<event::event_open_stream>(mod, "OpenStream")
+        .def_ro("parameters", &event::event_open_stream::parameters)
+        .def("__repr__",
+             repr<event::event_open_stream>("OpenStream", field("parameters", &event::event_open_stream::parameters)));
 
     nb::class_<event::event_close_stream>(mod, "CloseStream")
-        .def_prop_ro("stream", &event::event_close_stream::get_stream);
+        .def_ro("stream", &event::event_close_stream::stream)
+        .def("__repr__",
+             repr<event::event_close_stream>("CloseStream", field("stream", &event::event_close_stream::stream)));
 
     nb::class_<ksnp_server_event_suspend_stream>(mod, "SuspendStream")
-        .def_ro("timeout", &ksnp_server_event_suspend_stream::timeout);
+        .def_ro("timeout", &ksnp_server_event_suspend_stream::timeout)
+        .def("__repr__",
+             repr<ksnp_server_event_suspend_stream>("SuspendStream",
+                                                    field("timeout", &ksnp_server_event_suspend_stream::timeout)));
 
     nb::class_<ksnp_server_event_keep_alive>(mod, "KeepAlive")
-        .def_prop_ro("stream_id", [](ksnp_server_event_keep_alive const &self) -> pyksnp::stream::stream_id {
-            pyksnp::stream::stream_id sid{};
-            std::ranges::copy(self.stream_id, sid.begin());
-            return sid;
+        .def_prop_ro("stream_id",
+                     [](ksnp_server_event_keep_alive const &self) -> pyksnp::stream::stream_id {
+                         pyksnp::stream::stream_id sid{};
+                         std::ranges::copy(self.stream_id, sid.begin());
+                         return sid;
+                     })
+        .def("__repr__", [](ksnp_server_event_keep_alive const &self) -> std::string {
+            std::array<char, UUID_STR_LEN> out{};
+            uuid_unparse_lower(&self.stream_id[0], out.data());
+            return std::format("KeepAlive(stream_id={})", out.data());
         });
 
     nb::class_<ksnp_server_event_new_capacity>(mod, "NewCapacity")
         .def_ro("additional_capacity", &ksnp_server_event_new_capacity::additional_capacity)
-        .def_ro("current_capacity", &ksnp_server_event_new_capacity::current_capacity);
+        .def_ro("current_capacity", &ksnp_server_event_new_capacity::current_capacity)
+        .def("__repr__",
+             repr<ksnp_server_event_new_capacity>(
+                 "NewCapacity",
+                 field("additional_capacity", &ksnp_server_event_new_capacity::additional_capacity),
+                 field("current_capacity", &ksnp_server_event_new_capacity::current_capacity)));
 
     nb::class_<event::server_event_error>(mod, "Error")
         .def_ro("code", &event::server_event_error::code)
         .def_ro("description", &event::server_event_error::description)
-        .def_prop_ro("stream", &event::server_event_error::get_stream);
+        .def_ro("stream", &event::server_event_error::stream)
+        .def("__repr__",
+             repr<server_event_error>("Error",
+                                      field("code", &server_event_error::code),
+                                      field("description", &server_event_error::description),
+                                      field("stream", &server_event_error::stream)));
 }
 
 }  // namespace event

@@ -153,34 +153,57 @@ auto convert(ksnp::client_event event) -> client_event
 auto register_module(nb::module_ &mod) -> void
 {
     nb::class_<ksnp_client_event_handshake>(mod, "Handshake")
-        .def_ro("protocol", &ksnp_client_event_handshake::protocol);
+        .def_ro("protocol", &ksnp_client_event_handshake::protocol)
+        .def("__repr__",
+             repr<ksnp_client_event_handshake>("Handshake", field("protocol", &ksnp_client_event_handshake::protocol)));
 
-    (void)nb::class_<client::event::stream_accepted>(mod, "StreamAccepted")
-        .def_ro("parameters", &client::event::stream_accepted::parameters);
+    (void)nb::class_<stream_accepted>(mod, "StreamAccepted")
+        .def_ro("parameters", &stream_accepted::parameters)
+        .def("__repr__", repr<stream_accepted>("StreamAccepted", field("parameters", &stream_accepted::parameters)));
 
-    (void)nb::class_<client::event::stream_rejected>(mod, "StreamRejected")
-        .def_ro("code", &client::event::stream_rejected::code)
-        .def_ro("parameters", &client::event::stream_rejected::parameters)
-        .def_ro("message", &client::event::stream_rejected::message);
+    (void)nb::class_<stream_rejected>(mod, "StreamRejected")
+        .def_ro("code", &stream_rejected::code)
+        .def_ro("parameters", &stream_rejected::parameters)
+        .def_ro("message", &stream_rejected::message)
+        .def("__repr__",
+             repr<stream_rejected>("StreamRejected",
+                                   field("code", &stream_rejected::code),
+                                   field("parameters", &stream_rejected::parameters),
+                                   field("message", &stream_rejected::message)));
 
-    (void)nb::class_<client::event::stream_close>(mod, "StreamClose")
-        .def_ro("code", &client::event::stream_close::code)
-        .def_ro("message", &client::event::stream_close::message);
+    (void)nb::class_<stream_close>(mod, "StreamClose")
+        .def_ro("code", &stream_close::code)
+        .def_ro("message", &stream_close::message)
+        .def("__repr__",
+             repr<stream_close>(
+                 "StreamClose", field("code", &stream_close::code), field("message", &stream_close::message)));
 
-    (void)nb::class_<client::event::stream_suspend>(mod, "StreamSuspend")
-        .def_ro("code", &client::event::stream_suspend::code)
-        .def_ro("timeout", &client::event::stream_suspend::timeout)
-        .def_ro("message", &client::event::stream_suspend::message);
+    (void)nb::class_<stream_suspend>(mod, "StreamSuspend")
+        .def_ro("code", &stream_suspend::code)
+        .def_ro("timeout", &stream_suspend::timeout)
+        .def_ro("message", &stream_suspend::message)
+        .def("__repr__",
+             repr<stream_suspend>("StreamSuspend",
+                                  field("code", &stream_suspend::code),
+                                  field("timeout", &stream_suspend::timeout),
+                                  field("message", &stream_suspend::message)));
 
-    (void)nb::class_<client::event::key_data>(mod, "KeyData").def_ro("key_data", &event::key_data::data);
+    (void)nb::class_<key_data>(mod, "KeyData")
+        .def_ro("key_data", &event::key_data::data)
+        .def("__repr__", repr<key_data>("KeyData", field("key_data", &key_data::data)));
 
-    (void)nb::class_<client::event::keep_alive>(mod, "KeepAlive")
-        .def_ro("code", &client::event::keep_alive::code)
-        .def_ro("message", &client::event::keep_alive::message);
+    (void)nb::class_<keep_alive>(mod, "KeepAlive")
+        .def_ro("code", &keep_alive::code)
+        .def_ro("message", &keep_alive::message)
+        .def("__repr__",
+             repr<keep_alive>("KeepAlive", field("code", &keep_alive::code), field("message", &keep_alive::message)));
 
-    (void)nb::class_<client::event::event_error>(mod, "Error")
-        .def_ro("code", &client::event::event_error::code)
-        .def_ro("description", &client::event::event_error::description);
+    (void)nb::class_<event_error>(mod, "Error")
+        .def_ro("code", &event_error::code)
+        .def_ro("description", &event_error::description)
+        .def("__repr__",
+             repr<event_error>(
+                 "Error", field("code", &event_error::code), field("description", &event_error::description)));
 }
 
 }  // namespace event

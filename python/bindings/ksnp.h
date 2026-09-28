@@ -2,7 +2,9 @@
 
 #include <Python.h>
 
+#include <sstream>
 #include <stdexcept>
+#include <string>
 
 #include <ksnp/serde.h>
 #include <ksnp/types.h>
@@ -17,6 +19,47 @@ template<class... Ts>
 struct overloads : Ts... {
     using Ts::operator()...;
 };
+
+template<typename T, typename M>
+struct repr_field {
+    char const *name;
+    M T::*member;
+};
+
+// helper to create repr_field instances for calling `repr` with.
+template<typename T, typename M>
+constexpr auto field(char const *name, M T::*member) -> repr_field<T, M>
+{
+    return repr_field<T, M>{name, member};
+}
+
+// helper to generate a `__repr__` implementation. Expects a class name and
+// repr_field instances.
+template<typename T, typename... Fields>
+auto repr(char const *class_name, Fields... fields)
+{
+    return [class_name, fields...](T const &self) -> nanobind::str {
+        std::ostringstream out;
+
+        bool first_field = true;
+        auto append      = [&self, &out, &first_field](auto const &field) -> void {
+            if (!first_field) {
+                out << ", ";
+            }
+            first_field = false;
+
+            nanobind::object value = nanobind::cast(self.*(field.member));
+            out << field.name << '=' << nanobind::repr(value).c_str();
+        };
+
+        out << class_name << '(';
+        (append(fields), ...);
+        out << ')';
+
+        auto res = std::move(out).str();
+        return nanobind::str(res.c_str(), res.size());
+    };
+}
 
 /**
  * @brief Wrapper for Py_buffer to handle lifetime management.
