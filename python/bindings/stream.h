@@ -319,13 +319,13 @@ public:
                               [](std::monostate /*arg*/) -> U {
                                   return U{.type = ksnp_qos_type::KSNP_QOS_NULL, .none = 0};
                               },
-                              [](std::tuple<T, T> arg) -> U {
+                              [](std::tuple<T, T> const &arg) -> U {
                                   return U{
                                       .type  = ksnp_qos_type::KSNP_QOS_RANGE,
                                       .range = {.min = std::get<0>(arg), .max = std::get<1>(arg)}
                                   };
                               },
-                              [](std::vector<T> arg) -> U {
+                              [](std::vector<T> const &arg) -> U {
                                   return U{
                                       .type = ksnp_qos_type::KSNP_QOS_LIST,
                                       .list = {.values = arg.data(), .count = arg.size()}
