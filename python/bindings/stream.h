@@ -185,16 +185,16 @@ public:
 
     [[nodiscard]] auto to_ksnp_address() const -> ksnp_address
     {
-        return std::visit(
-            [](auto &&arg) -> ksnp_address {
-                using T = std::decay_t<decltype(arg)>;
-                if constexpr (std::is_same_v<T, nb::str>) {
-                    return ksnp_address{.sae = arg.c_str(), .network = nullptr};
-                } else if constexpr (std::is_same_v<T, std::tuple<nb::str, nb::str>>) {
-                    return ksnp_address{.sae = std::get<0>(arg).c_str(), .network = std::get<1>(arg).c_str()};
-                }
-            },
-            *this);
+        return std::visit(overloads{
+                              [](nb::str const &arg) -> ksnp_address {
+                                  return ksnp_address{.sae = arg.c_str(), .network = nullptr};
+                              },
+                              [](std::tuple<nb::str, nb::str> const &arg) -> ksnp_address {
+                                  return ksnp_address{.sae     = std::get<0>(arg).c_str(),
+                                                      .network = std::get<1>(arg).c_str()};
+                              },
+                          },
+                          *this);
     }
 };
 
@@ -225,22 +225,21 @@ public:
 
     [[nodiscard]] auto to_ksnp_rate() const -> ksnp_rate
     {
-        return std::visit(
-            [](auto &&arg) -> ksnp_rate {
-                using T = std::decay_t<decltype(arg)>;
-                if constexpr (std::is_same_v<T, uint32_t>) {
-                    if (arg == 0) {
-                        throw nb::value_error("zero rate");
-                    }
-                    return ksnp_rate{.bits = arg, .seconds = 0};
-                } else if constexpr (std::is_same_v<T, std::tuple<uint32_t, uint32_t>>) {
-                    if (std::get<0>(arg) == 0) {
-                        throw nb::value_error("zero rate");
-                    }
-                    return ksnp_rate{.bits = std::get<0>(arg), .seconds = std::get<1>(arg)};
-                }
-            },
-            *this);
+        return std::visit(overloads{
+                              [](uint32_t const &arg) -> ksnp_rate {
+                                  if (arg == 0) {
+                                      throw nb::value_error("zero rate");
+                                  }
+                                  return ksnp_rate{.bits = arg, .seconds = 0};
+                              },
+                              [](std::tuple<uint32_t, uint32_t> const &arg) -> ksnp_rate {
+                                  if (std::get<0>(arg) == 0) {
+                                      throw nb::value_error("zero rate");
+                                  }
+                                  return ksnp_rate{.bits = std::get<0>(arg), .seconds = std::get<1>(arg)};
+                              },
+                          },
+                          *this);
     }
 };
 
