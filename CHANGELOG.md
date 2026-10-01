@@ -1,11 +1,13 @@
 Changelog
 =========
 
-Current
--------
+Version 0.4.6
+-------------
 
 * Correctly validate UTF-8 strings in messages.
 * Enforce stricter parsing of JSON data.
+* Add `__repr__` implementation to Python bindings.
+* Fix various issues in the Python bindings.
 
 Version 0.4.5
 -------------
